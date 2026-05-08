@@ -13,11 +13,14 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@supabase/supabase-js": "^2.105.3",
     "@tailwindcss/vite": "^4.2.4",
     "autoprefixer": "^10.5.0",
+    "bcryptjs": "^3.0.3",
     "html2canvas": "^1.4.1",
     "idb-keyval": "^6.2.2",
+    "jose": "^6.2.3",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^1.14.0",

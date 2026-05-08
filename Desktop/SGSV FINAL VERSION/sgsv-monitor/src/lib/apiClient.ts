@@ -1,4 +1,7 @@
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined || '').replace(/\/$/, '');
+// En producción (Cloudflare Pages) la API está en el mismo origen: /auth, /incidentes, etc.
+// En desarrollo local con wrangler pages dev también usa mismo origen.
+// VITE_API_URL solo es necesario si corres el frontend y el backend en puertos distintos.
+const API_URL = ((import.meta.env.VITE_API_URL as string | undefined) || '').replace(/\/$/, '');
 const TOKEN_KEY = 'sgsv_token';
 
 export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
@@ -8,7 +11,8 @@ export const setToken = (token: string | null): void => {
   else localStorage.removeItem(TOKEN_KEY);
 };
 
-export const isApiConfigured = (): boolean => Boolean(API_URL);
+// Siempre configurada: en Pages Functions el API vive en el mismo origen
+export const isApiConfigured = (): boolean => true;
 
 const buildHeaders = (): HeadersInit => {
   const token = getToken();
@@ -18,8 +22,6 @@ const buildHeaders = (): HeadersInit => {
 };
 
 const apiFetch = async (path: string, init: RequestInit = {}): Promise<unknown> => {
-  if (!API_URL) throw new Error('VITE_API_URL no esta configurada.');
-
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: { ...buildHeaders(), ...(init.headers || {}) },
