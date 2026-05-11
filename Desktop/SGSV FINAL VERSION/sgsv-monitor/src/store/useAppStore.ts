@@ -15,7 +15,7 @@ import {
   deletePersonaInteresById,
   upsertTurno,
 } from '../lib/storage';
-import { isSupabaseConfigured } from '../lib/supabaseClient';
+import { getSupabaseConfigError, hasSupabaseEnv, isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   LOCAL_ADMIN_PROFILE,
   PERMISSIONS,
@@ -121,7 +121,7 @@ export const useAppStore = create<AppStore>()(
     role: ROLES.ADMIN,
     profile: LOCAL_ADMIN_PROFILE,
     session: null,
-    cloudEnabled: isSupabaseConfigured(),
+    cloudEnabled: isSupabaseConfigured() || hasSupabaseEnv(),
 
     authReady: false,
     dataLoaded: false,
@@ -133,10 +133,25 @@ export const useAppStore = create<AppStore>()(
     initializeApp: async () => {
       if (get().booting || get().authReady) return;
 
+      const supabaseConfigError = getSupabaseConfigError();
       const cloudEnabled = isSupabaseConfigured();
-      set({ booting: true, cloudEnabled, syncError: null, authError: null });
+      const shouldUseCloudAuth = cloudEnabled || Boolean(supabaseConfigError);
+      set({ booting: true, cloudEnabled: shouldUseCloudAuth, syncError: null, authError: null });
 
       try {
+        if (supabaseConfigError) {
+          set({
+            session: null,
+            profile: null,
+            role: ROLES.OPERATOR,
+            view: getDefaultViewForRole(ROLES.OPERATOR),
+            authError: supabaseConfigError,
+            authReady: true,
+            dataLoaded: true,
+          });
+          return;
+        }
+
         if (!cloudEnabled) {
           set({
             session: null,
