@@ -13,6 +13,7 @@ export const generateIncidentsPdf = async ({
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
+  // Encabezado
   doc.setFillColor(15, 23, 42);
   doc.rect(0, 0, pageWidth, 25, 'F');
   doc.setTextColor(255, 255, 255);
@@ -25,6 +26,7 @@ export const generateIncidentsPdf = async ({
 
   let startY = 35;
 
+  // Captura del gráfico — se omite silenciosamente si falla (CORS en producción)
   if (chartElementId) {
     const chartEl = document.getElementById(chartElementId);
     if (chartEl) {
@@ -33,6 +35,8 @@ export const generateIncidentsPdf = async ({
           backgroundColor: '#0f172a',
           scale: 2,
           logging: false,
+          useCORS: true,
+          allowTaint: false,
         });
         const imgData = canvas.toDataURL('image/jpeg', 0.8);
         doc.setTextColor(15, 23, 42);
@@ -43,12 +47,14 @@ export const generateIncidentsPdf = async ({
         const imgHeight = (canvas.height * imgWidth) / canvas.width;
         doc.addImage(imgData, 'JPEG', 14, startY + 5, imgWidth, imgHeight);
         startY = startY + imgHeight + 20;
-      } catch (err) {
-        console.error('Error capturando el gráfico:', err);
+      } catch {
+        // Si el canvas falla (CORS en Cloudflare), continuamos sin el gráfico
+        console.warn('Gráfico no incluido en el PDF (restricción de canvas en producción).');
       }
     }
   }
 
+  // Tabla de incidentes
   doc.setTextColor(15, 23, 42);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');

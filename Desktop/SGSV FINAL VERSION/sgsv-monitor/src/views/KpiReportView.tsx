@@ -16,23 +16,23 @@ export default function KpiReportView({ incidentes, personasInteres }) {
     try {
       setIsGenerating(true);
       const canvas = await html2canvas(reportRef.current, {
-        scale: 2, // High resolution
+        scale: 2,
         useCORS: true,
+        allowTaint: false,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
       });
-      
+
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
-      
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Reporte_SGSV_${dateRange}dias.pdf`);
-    } catch (error) {
-      console.error('Error al generar PDF:', error);
-      alert('Hubo un error al generar el PDF. Intenta usar Ctrl+P o CMD+P.');
+    } catch {
+      // Si falla html2canvas (CORS en producción), abre el diálogo de impresión del navegador
+      console.warn('Captura de canvas fallida — abriendo impresión del navegador.');
+      window.print();
     } finally {
       setIsGenerating(false);
     }
