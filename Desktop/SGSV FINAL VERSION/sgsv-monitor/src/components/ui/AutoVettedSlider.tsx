@@ -1,10 +1,30 @@
 import { useState, useEffect, useMemo } from 'react';
+import type { PersonaInteres } from '../../types';
 
-export default function AutoVettedSlider({ personasInteres, setLightboxImage, compact = false, className = '' }) {
+interface AutoVettedSliderProps {
+  personasInteres: PersonaInteres[];
+  setLightboxImage: (src: string) => void;
+  compact?: boolean;
+  className?: string;
+}
+
+interface VettedSlide {
+  id: string;
+  src: string;
+  nombre: string;
+  terminos: string;
+}
+
+export default function AutoVettedSlider({
+  personasInteres,
+  setLightboxImage,
+  compact = false,
+  className = '',
+}: AutoVettedSliderProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const vetadoSlides = useMemo(() => {
-    const slides = [];
+    const slides: VettedSlide[] = [];
     for (const persona of personasInteres) {
       const imgs = Array.isArray(persona.imagenes) ? persona.imagenes.filter(Boolean) : [];
       for (let idx = 0; idx < imgs.length; idx++) {

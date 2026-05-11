@@ -6,7 +6,7 @@ import {
   saveIncidentesToIDB,
   savePcpToIDB,
   saveTurnosToIDB,
-  loadTurnosFromIDB,
+  loadTurnos,
   saveConfigToIDB,
   loadConfigFromIDB,
   upsertIncidente,
@@ -203,7 +203,7 @@ export const useAppStore = create<AppStore>()(
 
       try {
         const { incidentes, pcp } = await loadData({ preferCloud: Boolean(cloudEnabled && session) });
-        const turnos = await loadTurnosFromIDB();
+        const turnos = await loadTurnos({ preferCloud: Boolean(cloudEnabled && session) });
         const config = await loadConfigFromIDB();
         const turnoActivo = turnos.find((t) => !t.fin) ?? null;
 
@@ -232,7 +232,7 @@ export const useAppStore = create<AppStore>()(
     },
 
     signOut: async () => {
-      authSignOut();
+      await authSignOut();
       set({
         session: null,
         profile: null,
@@ -254,28 +254,38 @@ export const useAppStore = create<AppStore>()(
     // ─── Incidentes ───────────────────────────────────────────────────────────
 
     addIncidente: async (incidente) => {
-      const { role, incidentes, turnoActivo, profile } = get();
+      const { role, incidentes, turnoActivo, turnos } = get();
       assertPermission(role, PERMISSIONS.CREATE_INCIDENTS);
 
       const normalized = normalizeIncident({ ...incidente, turnoId: turnoActivo?.id });
       const nextIncidentes = sortByTimestampDesc([normalized, ...incidentes]);
       set({ incidentes: nextIncidentes, syncError: null });
 
+      let nextTurnos = turnos;
+      let updatedTurno: Turno | null = null;
       if (turnoActivo) {
-        const updatedTurno: Turno = {
+        updatedTurno = {
           ...turnoActivo,
           incidenteIds: [...turnoActivo.incidenteIds, normalized.id],
         };
-        const nextTurnos = get().turnos.map((t) => t.id === turnoActivo.id ? updatedTurno : t);
+        nextTurnos = turnos.map((t) => t.id === turnoActivo.id ? updatedTurno as Turno : t);
         set({ turnoActivo: updatedTurno, turnos: nextTurnos });
-        await saveTurnosToIDB(nextTurnos);
-        await upsertTurno(updatedTurno);
       }
 
       try {
+        if (updatedTurno) {
+          await saveTurnosToIDB(nextTurnos);
+          await upsertTurno(updatedTurno);
+        }
         await upsertIncidente(normalized);
       } catch (error) {
-        set({ incidentes, syncError: (error as Error).message || 'Error guardando incidente.' });
+        set({
+          incidentes,
+          turnos,
+          turnoActivo,
+          syncError: (error as Error).message || 'Error guardando incidente.',
+        });
+        if (updatedTurno) await saveTurnosToIDB(turnos);
         throw error;
       }
 
@@ -422,14 +432,20 @@ export const useAppStore = create<AppStore>()(
 
       const nextTurnos = [nuevoTurno, ...turnos];
       set({ turnos: nextTurnos, turnoActivo: nuevoTurno });
-      await saveTurnosToIDB(nextTurnos);
-      await upsertTurno(nuevoTurno);
+      try {
+        await saveTurnosToIDB(nextTurnos);
+        await upsertTurno(nuevoTurno);
+      } catch (error) {
+        set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error guardando turno.' });
+        await saveTurnosToIDB(turnos);
+        throw error;
+      }
 
       return nuevoTurno;
     },
 
     cerrarTurno: async (id) => {
-      const { turnos } = get();
+      const { turnos, turnoActivo } = get();
       const turno = turnos.find((t) => t.id === id);
       if (!turno) return;
 
@@ -437,8 +453,14 @@ export const useAppStore = create<AppStore>()(
       const nextTurnos = turnos.map((t) => t.id === id ? cerrado : t);
 
       set({ turnos: nextTurnos, turnoActivo: null });
-      await saveTurnosToIDB(nextTurnos);
-      await upsertTurno(cerrado);
+      try {
+        await saveTurnosToIDB(nextTurnos);
+        await upsertTurno(cerrado);
+      } catch (error) {
+        set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error cerrando turno.' });
+        await saveTurnosToIDB(turnos);
+        throw error;
+      }
     },
 
     agregarNotaTurno: async (turnoId, texto) => {
@@ -459,9 +481,15 @@ export const useAppStore = create<AppStore>()(
           : turnoActivo;
 
       set({ turnos: nextTurnos, turnoActivo: nextActivo });
-      await saveTurnosToIDB(nextTurnos);
-      const turnoActualizado = nextTurnos.find((t) => t.id === turnoId);
-      if (turnoActualizado) await upsertTurno(turnoActualizado);
+      try {
+        await saveTurnosToIDB(nextTurnos);
+        const turnoActualizado = nextTurnos.find((t) => t.id === turnoId);
+        if (turnoActualizado) await upsertTurno(turnoActualizado);
+      } catch (error) {
+        set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error guardando nota de turno.' });
+        await saveTurnosToIDB(turnos);
+        throw error;
+      }
     },
 
     // ─── Config ───────────────────────────────────────────────────────────────

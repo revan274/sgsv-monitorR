@@ -1,105 +1,247 @@
--- Migración Inicial para SGSV Monitor en Supabase
--- Ejecutar en el SQL Editor de Supabase
+-- Initial schema for SGSV Monitor.
+-- This migration matches supabase/schema.sql and the frontend column mapping.
 
--- 1. Perfiles de usuario (extendiendo auth.users)
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT UNIQUE NOT NULL,
-  role TEXT NOT NULL DEFAULT 'operador' CHECK (role IN ('operador', 'administrador')),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+create extension if not exists pgcrypto;
+
+do $$
+begin
+  create type public.app_role as enum ('operador', 'administrador');
+exception
+  when duplicate_object then null;
+end $$;
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  role public.app_role not null default 'operador',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
--- 2. Incidentes
-CREATE TABLE IF NOT EXISTS public.incidentes (
-  id TEXT PRIMARY KEY,
-  fecha TEXT,
-  timestamp BIGINT,
-  titulo TEXT NOT NULL,
-  tipo TEXT NOT NULL,
-  severidad TEXT NOT NULL,
-  descripcion TEXT NOT NULL,
-  ubicacion TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'Abierto',
-  responsable TEXT,
-  imagen_evidencia TEXT,
-  imagen_persona TEXT,
-  video_evidencia TEXT,
-  closed_at BIGINT,
-  notas JSONB DEFAULT '[]'::jsonb,
-  turno_id TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+create table if not exists public.incidentes (
+  id text primary key,
+  fecha text,
+  timestamp bigint not null default 0,
+  titulo text not null,
+  tipo text not null,
+  severidad text not null default 'Alta',
+  descripcion text not null,
+  ubicacion text not null,
+  status text not null default 'Abierto',
+  responsable text,
+  imagen_evidencia text,
+  imagen_persona text,
+  video_evidencia text,
+  closed_at bigint,
+  notas jsonb not null default '[]'::jsonb,
+  turno_id text,
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_incidentes_ts ON public.incidentes(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_incidentes_status ON public.incidentes(status);
-CREATE INDEX IF NOT EXISTS idx_incidentes_severidad ON public.incidentes(severidad);
-
--- 3. Personas de interés (PCP)
-CREATE TABLE IF NOT EXISTS public.personas_interes (
-  id TEXT PRIMARY KEY,
-  fecha_registro TEXT,
-  nombre TEXT NOT NULL,
-  terminos TEXT,
-  descripcion TEXT DEFAULT '',
-  imagenes JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+create table if not exists public.personas_interes (
+  id text primary key,
+  fecha_registro text,
+  nombre text not null default '',
+  terminos text,
+  descripcion text not null default '',
+  imagenes jsonb not null default '[]'::jsonb,
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_personas_nombre ON public.personas_interes(nombre ASC);
-
--- 4. Turnos operativos
-CREATE TABLE IF NOT EXISTS public.turnos (
-  id TEXT PRIMARY KEY,
-  inicio BIGINT NOT NULL,
-  fin BIGINT,
-  operador TEXT NOT NULL,
-  ubicacion TEXT NOT NULL,
-  notas JSONB DEFAULT '[]'::jsonb,
-  incidente_ids JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+create table if not exists public.turnos (
+  id text primary key,
+  inicio bigint not null,
+  fin bigint,
+  operador text not null,
+  ubicacion text not null,
+  notas jsonb not null default '[]'::jsonb,
+  incidente_ids jsonb not null default '[]'::jsonb,
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
--- Habilitar Row Level Security (RLS)
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.incidentes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.personas_interes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.turnos ENABLE ROW LEVEL SECURITY;
+create index if not exists idx_incidentes_ts on public.incidentes(timestamp desc);
+create index if not exists idx_incidentes_status on public.incidentes(status);
+create index if not exists idx_incidentes_severidad on public.incidentes(severidad);
+create index if not exists idx_personas_nombre on public.personas_interes(nombre asc);
+create index if not exists idx_turnos_inicio on public.turnos(inicio desc);
 
--- Políticas para perfiles (profiles)
-CREATE POLICY "Public profiles are viewable by everyone." ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Users can insert their own profile." ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Users can update own profile." ON public.profiles FOR UPDATE USING (auth.uid() = id);
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = auth.uid()
+      and role = 'administrador'
+  );
+$$;
 
--- Políticas para incidentes
-CREATE POLICY "Authenticated users can select incidentes" ON public.incidentes FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert incidentes" ON public.incidentes FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update incidentes" ON public.incidentes FOR UPDATE TO authenticated USING (true);
-CREATE POLICY "Authenticated users can delete incidentes" ON public.incidentes FOR DELETE TO authenticated USING (true);
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, role)
+  values (
+    new.id,
+    coalesce(new.email, ''),
+    case
+      when new.raw_user_meta_data ->> 'role' = 'administrador' then 'administrador'::public.app_role
+      else 'operador'::public.app_role
+    end
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        updated_at = now();
 
--- Políticas para personas_interes
-CREATE POLICY "Authenticated users can select personas" ON public.personas_interes FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert personas" ON public.personas_interes FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update personas" ON public.personas_interes FOR UPDATE TO authenticated USING (true);
-CREATE POLICY "Authenticated users can delete personas" ON public.personas_interes FOR DELETE TO authenticated USING (true);
+  return new;
+end;
+$$;
 
--- Políticas para turnos
-CREATE POLICY "Authenticated users can select turnos" ON public.turnos FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert turnos" ON public.turnos FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update turnos" ON public.turnos FOR UPDATE TO authenticated USING (true);
-CREATE POLICY "Authenticated users can delete turnos" ON public.turnos FOR DELETE TO authenticated USING (true);
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_user();
 
--- Trigger para crear un perfil automáticamente cuando se registra un usuario en Supabase Auth
-CREATE OR REPLACE FUNCTION public.handle_new_user() 
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.profiles (id, email, role)
-  VALUES (new.id, new.email, 'operador');
-  RETURN new;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+alter table public.profiles enable row level security;
+alter table public.incidentes enable row level security;
+alter table public.personas_interes enable row level security;
+alter table public.turnos enable row level security;
+alter table public.incidentes replica identity full;
+alter table public.personas_interes replica identity full;
+alter table public.turnos replica identity full;
 
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+drop policy if exists "profiles_select_self_or_admin" on public.profiles;
+create policy "profiles_select_self_or_admin"
+on public.profiles
+for select
+to authenticated
+using (id = auth.uid() or public.is_admin());
+
+drop policy if exists "profiles_update_admin" on public.profiles;
+create policy "profiles_update_admin"
+on public.profiles
+for update
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "incidentes_insert_authenticated" on public.incidentes;
+create policy "incidentes_insert_authenticated"
+on public.incidentes
+for insert
+to authenticated
+with check (coalesce(created_by, auth.uid()) = auth.uid() or public.is_admin());
+
+drop policy if exists "incidentes_admin_select" on public.incidentes;
+create policy "incidentes_admin_select"
+on public.incidentes
+for select
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "incidentes_admin_update" on public.incidentes;
+create policy "incidentes_admin_update"
+on public.incidentes
+for update
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "incidentes_admin_delete" on public.incidentes;
+create policy "incidentes_admin_delete"
+on public.incidentes
+for delete
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "pcp_admin_select" on public.personas_interes;
+create policy "pcp_admin_select"
+on public.personas_interes
+for select
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "pcp_admin_insert" on public.personas_interes;
+create policy "pcp_admin_insert"
+on public.personas_interes
+for insert
+to authenticated
+with check (public.is_admin());
+
+drop policy if exists "pcp_admin_update" on public.personas_interes;
+create policy "pcp_admin_update"
+on public.personas_interes
+for update
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "pcp_admin_delete" on public.personas_interes;
+create policy "pcp_admin_delete"
+on public.personas_interes
+for delete
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "turnos_admin_select" on public.turnos;
+create policy "turnos_admin_select"
+on public.turnos
+for select
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "turnos_admin_insert" on public.turnos;
+create policy "turnos_admin_insert"
+on public.turnos
+for insert
+to authenticated
+with check (public.is_admin());
+
+drop policy if exists "turnos_admin_update" on public.turnos;
+create policy "turnos_admin_update"
+on public.turnos
+for update
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "turnos_admin_delete" on public.turnos;
+create policy "turnos_admin_delete"
+on public.turnos
+for delete
+to authenticated
+using (public.is_admin());
+
+do $$
+begin
+  alter publication supabase_realtime add table public.incidentes;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.personas_interes;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.turnos;
+exception
+  when duplicate_object then null;
+end $$;

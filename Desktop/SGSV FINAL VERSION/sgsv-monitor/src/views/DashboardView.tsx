@@ -75,9 +75,7 @@ export default function DashboardView({
 
     const stats = (list: typeof incidentesPrepared) => ({
       total: list.length,
-      criticos: list.filter(
-        (i) => i.severidad === 'Critica' || i.severidad === 'Crítica' || i.severidad === 'Alta',
-      ).length,
+      criticos: list.filter((i) => i.severidad === 'Critica' || i.severidad === 'Alta').length,
       abiertos: list.filter(
         (i) => i.status === 'Abierto' || i.status === 'En seguimiento',
       ).length,

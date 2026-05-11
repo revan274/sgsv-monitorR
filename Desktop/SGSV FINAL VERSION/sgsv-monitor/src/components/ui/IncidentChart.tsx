@@ -1,12 +1,28 @@
 import { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { normalizeTimestamp, INCIDENT_TYPES, CHART_COLORS } from '../../lib/utils';
+import type { Incidente } from '../../types';
 
-export default function IncidentChart({ incidentesPrepared, containerId }) {
+type ChartIncident = Incidente & {
+  _indexText?: string;
+  _hasBlacklistMatch?: boolean;
+};
+
+type ChartRow = {
+  date: string;
+  _ts: number;
+} & Record<string, string | number>;
+
+interface IncidentChartProps {
+  incidentesPrepared: ChartIncident[];
+  containerId?: string;
+}
+
+export default function IncidentChart({ incidentesPrepared, containerId }: IncidentChartProps) {
   const [now] = useState(() => Date.now());
 
   const chartData = useMemo(() => {
-    const byDate = {};
+    const byDate: Record<string, ChartRow> = {};
     const sixtyDaysAgo = now - (60 * 24 * 60 * 60 * 1000);
     
     incidentesPrepared.forEach(inc => {
@@ -18,7 +34,7 @@ export default function IncidentChart({ incidentesPrepared, containerId }) {
         byDate[dk] = { date: dk, _ts: ts }; 
         INCIDENT_TYPES.forEach(t => byDate[dk][t] = 0); 
       }
-      byDate[dk][inc.tipo] = (byDate[dk][inc.tipo] || 0) + 1;
+      byDate[dk][inc.tipo] = Number(byDate[dk][inc.tipo] || 0) + 1;
     });
     
     return Object.values(byDate).sort((a, b) => a._ts - b._ts);

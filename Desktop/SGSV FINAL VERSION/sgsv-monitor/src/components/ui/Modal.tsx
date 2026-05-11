@@ -1,4 +1,20 @@
-export default function Modal({ isOpen, title, content, onClose, onConfirm, confirmColor = 'bg-red-600' }) {
+interface ModalProps {
+  isOpen: boolean;
+  title: string;
+  content: string;
+  onClose: () => void;
+  onConfirm: (() => void | Promise<void>) | null;
+  confirmColor?: string;
+}
+
+export default function Modal({
+  isOpen,
+  title,
+  content,
+  onClose,
+  onConfirm,
+  confirmColor = 'bg-red-600',
+}: ModalProps) {
   if (!isOpen) return null;
 
   return (

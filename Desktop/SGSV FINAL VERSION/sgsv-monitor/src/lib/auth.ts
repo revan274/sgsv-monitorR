@@ -62,11 +62,15 @@ export const getCurrentSession = async (): Promise<ApiSession | null> => {
   if (error || !session) return null;
 
   try {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', session.user.id)
-      .single();
+      .maybeSingle();
+
+    if (profileError) {
+      throw new Error(`Error al cargar perfil: ${profileError.message}`);
+    }
 
     const userProfile: UserProfile = profile
       ? { id: profile.id, email: profile.email, role: normalizeRole(profile.role) }
@@ -99,11 +103,15 @@ export const signInWithEmail = async ({
     throw new Error(error?.message || 'Error al iniciar sesion');
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', data.session.user.id)
-    .single();
+    .maybeSingle();
+
+  if (profileError) {
+    throw new Error(`Error al cargar perfil: ${profileError.message}`);
+  }
 
   const userProfile: UserProfile = profile
     ? { id: profile.id, email: profile.email, role: normalizeRole(profile.role) }
@@ -134,7 +142,11 @@ export const fetchProfiles = async (): Promise<UserProfile[]> => {
     .select('*')
     .order('email');
     
-  if (error || !data) return [];
+  if (error) {
+    throw new Error(`Error al cargar usuarios: ${error.message}`);
+  }
+
+  if (!data) return [];
   
   return data.map((u) => ({ 
     id: u.id,

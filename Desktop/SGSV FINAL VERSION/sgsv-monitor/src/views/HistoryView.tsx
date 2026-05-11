@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import {
   INCIDENT_TYPES,
   SEVERITY_OPTIONS,
@@ -13,9 +13,29 @@ import { Download, FileText, Trash2, Edit2 } from 'lucide-react';
 import IncidentChart from '../components/ui/IncidentChart';
 import EditIncidentModal from '../components/ui/EditIncidentModal';
 import IncidentNotes from '../components/ui/IncidentNotes';
+import type { Incidente, NotificationType, SeverityLevel, StatusOption } from '../types';
+import type { useAppStore } from '../store/useAppStore';
 
 const INC_PER_PAGE = 10;
-const severityRank = { Critica: 4, Alta: 3, Media: 2, Baja: 1 };
+const severityRank: Record<SeverityLevel, number> = { Critica: 4, Alta: 3, Media: 2, Baja: 1 };
+
+type PreparedIncident = Incidente & {
+  _indexText: string;
+  _hasBlacklistMatch: boolean;
+};
+
+interface HistoryViewProps {
+  incidentes: Incidente[];
+  deleteIncidente: ReturnType<typeof useAppStore.getState>['deleteIncidente'];
+  updateIncidente: ReturnType<typeof useAppStore.getState>['updateIncidente'];
+  setLightboxImage: (src: string) => void;
+  blacklistTerms: string[];
+  openModal: (title: string, content: string, onConfirm: () => void | Promise<void>, color?: string) => void;
+  notify: (msg: string, type?: NotificationType) => void;
+  canDelete: boolean;
+  canExport: boolean;
+  canEdit: boolean;
+}
 
 export default function HistoryView({
   incidentes,
@@ -28,7 +48,7 @@ export default function HistoryView({
   canDelete,
   canExport,
   canEdit,
-}) {
+}: HistoryViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('Todos');
   const [filterSeverity, setFilterSeverity] = useState('Todas');
@@ -38,11 +58,11 @@ export default function HistoryView({
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
   const [currentPageInc, setCurrentPageInc] = useState(1);
-  const [savingMap, setSavingMap] = useState({});
-  const [localResponsable, setLocalResponsable] = useState({});
+  const [savingMap, setSavingMap] = useState<Record<string, boolean>>({});
+  const [localResponsable, setLocalResponsable] = useState<Record<string, string>>({});
   
   // State para Edit Modal
-  const [editingIncident, setEditingIncident] = useState(null);
+  const [editingIncident, setEditingIncident] = useState<Incidente | null>(null);
 
   const incidentesPrepared = useMemo(() => {
     return incidentes.map((inc) => {
@@ -87,12 +107,12 @@ export default function HistoryView({
     filterDateEnd,
   ]);
 
-  const setFilter = (setter) => (event) => {
+  const setFilter = (setter: Dispatch<SetStateAction<string>>) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setter(event.target.value);
     setCurrentPageInc(1);
   };
 
-  const setCheckboxFilter = (setter) => (event) => {
+  const setCheckboxFilter = (setter: Dispatch<SetStateAction<boolean>>) => (event: ChangeEvent<HTMLInputElement>) => {
     setter(event.target.checked);
     setCurrentPageInc(1);
   };
@@ -105,9 +125,9 @@ export default function HistoryView({
     [filteredIncidentes, safeCurrentPage]
   );
 
-  const setSaving = (id, val) => setSavingMap((prev) => ({ ...prev, [id]: val }));
+  const setSaving = (id: string, val: boolean) => setSavingMap((prev) => ({ ...prev, [id]: val }));
 
-  const handleStatusChange = async (inc, newStatus) => {
+  const handleStatusChange = async (inc: PreparedIncident, newStatus: StatusOption) => {
     if (!canEdit) return;
     setSaving(inc.id, true);
     try {
@@ -126,7 +146,7 @@ export default function HistoryView({
     }
   };
 
-  const handleResponsableBlur = async (inc) => {
+  const handleResponsableBlur = async (inc: PreparedIncident) => {
     if (!canEdit) return;
     const newVal = (localResponsable[inc.id] ?? inc.responsable).trim();
     if (newVal === inc.responsable) return;
@@ -141,7 +161,7 @@ export default function HistoryView({
     }
   };
 
-  const getSeverityColor = (severity) => {
+  const getSeverityColor = (severity: SeverityLevel) => {
     switch (severity) {
       case 'Critica':
         return 'bg-red-900/50 text-red-200 border-red-700/50';
@@ -154,7 +174,7 @@ export default function HistoryView({
     }
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: StatusOption) => {
     switch (status) {
       case 'Cerrado':
         return 'bg-emerald-900/50 text-emerald-200 border-emerald-700/50';
@@ -165,7 +185,7 @@ export default function HistoryView({
     }
   };
 
-  const downloadFile = (blob, fileName) => {
+  const downloadFile = (blob: Blob, fileName: string) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -210,7 +230,7 @@ export default function HistoryView({
     }
   };
 
-  const confirmDelete = (incidentId) => {
+  const confirmDelete = (incidentId: string) => {
     openModal('Borrar', 'Borrar incidente?', async () => {
       try {
         await deleteIncidente(incidentId);
@@ -291,7 +311,7 @@ export default function HistoryView({
                   <div className="flex items-center gap-2 flex-wrap flex-1">
                     <select
                       value={inc.status}
-                      onChange={(e) => handleStatusChange(inc, e.target.value)}
+                      onChange={(e) => handleStatusChange(inc, e.target.value as StatusOption)}
                       disabled={!canEdit || savingMap[inc.id]}
                       className="glass-input input-sm text-xs text-white bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -328,8 +348,22 @@ export default function HistoryView({
               
               {(inc.imagenEvidencia || inc.imagenPersona) && (
                 <div className="flex md:flex-col gap-2 p-5 bg-slate-900/50 border-t md:border-t-0 md:border-l border-white/5 md:w-40 justify-center">
-                  {inc.imagenEvidencia && <img src={inc.imagenEvidencia} onClick={() => setLightboxImage(inc.imagenEvidencia)} className="w-full h-24 md:h-28 object-cover rounded-lg cursor-pointer border border-white/10 hover:opacity-80 transition hover:scale-105" alt="Evidencia" />}
-                  {inc.imagenPersona && <img src={inc.imagenPersona} onClick={() => setLightboxImage(inc.imagenPersona)} className="w-full h-24 md:h-28 object-cover rounded-lg cursor-pointer border border-white/10 hover:opacity-80 transition hover:scale-105" alt="Persona" />}
+                  {inc.imagenEvidencia && (
+                    <img
+                      src={inc.imagenEvidencia}
+                      onClick={() => inc.imagenEvidencia && setLightboxImage(inc.imagenEvidencia)}
+                      className="w-full h-24 md:h-28 object-cover rounded-lg cursor-pointer border border-white/10 hover:opacity-80 transition hover:scale-105"
+                      alt="Evidencia"
+                    />
+                  )}
+                  {inc.imagenPersona && (
+                    <img
+                      src={inc.imagenPersona}
+                      onClick={() => inc.imagenPersona && setLightboxImage(inc.imagenPersona)}
+                      className="w-full h-24 md:h-28 object-cover rounded-lg cursor-pointer border border-white/10 hover:opacity-80 transition hover:scale-105"
+                      alt="Persona"
+                    />
+                  )}
                 </div>
               )}
             </div>

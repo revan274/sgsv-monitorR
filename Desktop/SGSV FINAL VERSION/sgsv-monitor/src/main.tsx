@@ -10,7 +10,7 @@ import type { Incidente } from './types';
 
 registerSW({
   immediate: true,
-  onRegisteredSW: (_swUrl, registration) => {
+  onRegisteredSW: (_swUrl: string, registration?: ServiceWorkerRegistration) => {
     registration?.update();
   },
 });

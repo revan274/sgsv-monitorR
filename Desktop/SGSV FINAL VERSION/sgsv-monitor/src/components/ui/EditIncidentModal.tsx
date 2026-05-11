@@ -2,9 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { Camera, FileText, MapPin, AlertCircle, Trash2, X, AlertTriangle } from 'lucide-react';
 import { INCIDENT_TYPES, SEVERITY_OPTIONS, LOCATION_OPTIONS, STATUS_OPTIONS, compressImage } from '../../lib/utils';
 import { useAppStore } from '../../store/useAppStore';
+import type { Incidente, IncidentType, LocationOption, NotificationType, SeverityLevel, StatusOption } from '../../types';
 
-const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify }) => {
-  const [formData, setFormData] = useState({});
+interface EditIncidentFormData {
+  titulo: string;
+  descripcion: string;
+  tipo: IncidentType;
+  severidad: SeverityLevel;
+  ubicacion: LocationOption;
+  status: StatusOption;
+  responsable: string;
+  imagenEvidencia: string | null;
+  imagenPersona: string | null;
+}
+
+interface EditIncidentModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  incidente: Incidente | null;
+  updateIncidente: ReturnType<typeof useAppStore.getState>['updateIncidente'];
+  notify: (msg: string, type?: NotificationType) => void;
+}
+
+const defaultFormData: EditIncidentFormData = {
+  titulo: '',
+  descripcion: '',
+  tipo: INCIDENT_TYPES[0],
+  severidad: 'Media',
+  ubicacion: 'TJ01',
+  status: 'Abierto',
+  responsable: '',
+  imagenEvidencia: null,
+  imagenPersona: null,
+};
+
+const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify }: EditIncidentModalProps) => {
+  const [formData, setFormData] = useState<EditIncidentFormData>(defaultFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const profile = useAppStore((state) => state.profile);
@@ -52,7 +85,10 @@ const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify
     }
   };
 
-  const handleImageChange = async (e, field) => {
+  const handleImageChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: 'imagenEvidencia' | 'imagenPersona',
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -70,11 +106,11 @@ const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify
     }
   };
 
-  const removeImage = (field) => {
+  const removeImage = (field: 'imagenEvidencia' | 'imagenPersona') => {
     setFormData(prev => ({ ...prev, [field]: null }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!formData.titulo.trim() || !formData.descripcion.trim()) {
       setError('Titulo y descripcion son obligatorios.');
@@ -98,7 +134,7 @@ const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify
       notify('Incidente actualizado exitosamente');
       onClose();
     } catch (err) {
-      setError(err.message || 'Error al actualizar el incidente.');
+      setError(err instanceof Error ? err.message : 'Error al actualizar el incidente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -167,7 +203,7 @@ const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify
               <select
                 className="glass-input w-full appearance-none"
                 value={formData.severidad}
-                onChange={(e) => setFormData(prev => ({ ...prev, severidad: e.target.value }))}
+                onChange={(e) => setFormData(prev => ({ ...prev, severidad: e.target.value as SeverityLevel }))}
               >
                 {SEVERITY_OPTIONS.map(sev => <option key={sev} value={sev} className="bg-slate-800">{sev}</option>)}
               </select>
@@ -178,7 +214,7 @@ const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify
               <select
                 className="glass-input w-full appearance-none"
                 value={formData.status}
-                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value as StatusOption }))}
               >
                 {STATUS_OPTIONS.map(st => <option key={st} value={st} className="bg-slate-800">{st}</option>)}
               </select>

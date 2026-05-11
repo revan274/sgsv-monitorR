@@ -2,8 +2,15 @@ import React, { useState } from 'react';
 import { MessageSquare, Send, Clock, User } from 'lucide-react';
 import { createId } from '../../lib/utils';
 import { useAppStore } from '../../store/useAppStore';
+import type { Incidente, Nota, NotificationType } from '../../types';
 
-const IncidentNotes = ({ incidente, updateIncidente, notify }) => {
+interface IncidentNotesProps {
+  incidente: Incidente;
+  updateIncidente: ReturnType<typeof useAppStore.getState>['updateIncidente'];
+  notify: (msg: string, type?: NotificationType) => void;
+}
+
+const IncidentNotes = ({ incidente, updateIncidente, notify }: IncidentNotesProps) => {
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -11,13 +18,13 @@ const IncidentNotes = ({ incidente, updateIncidente, notify }) => {
 
   const notas = Array.isArray(incidente?.notas) ? incidente.notas : [];
 
-  const handleAddNote = async (e) => {
+  const handleAddNote = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newNote.trim()) return;
 
     setIsSubmitting(true);
     try {
-      const nota = {
+      const nota: Nota = {
         id: createId(),
         texto: newNote.trim(),
         autor: profile?.email || 'Operador',

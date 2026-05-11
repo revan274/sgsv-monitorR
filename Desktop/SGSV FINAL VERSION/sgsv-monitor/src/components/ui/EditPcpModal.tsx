@@ -2,9 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { Camera, FileText, Trash2, X, AlertTriangle } from 'lucide-react';
 import { PCP_TERMINO_OPTIONS, compressImage, MAX_PCP_IMAGES } from '../../lib/utils';
 import { useAppStore } from '../../store/useAppStore';
+import type { NotificationType, PcpTermino, PersonaInteres } from '../../types';
 
-const EditPcpModal = ({ isOpen, onClose, persona, updatePersonaInteres, notify }) => {
-  const [formData, setFormData] = useState({});
+interface EditPcpFormData {
+  nombre: string;
+  descripcion: string;
+  terminos: PcpTermino;
+  imagenes: string[];
+}
+
+interface EditPcpModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  persona: PersonaInteres | null;
+  updatePersonaInteres: ReturnType<typeof useAppStore.getState>['updatePersonaInteres'];
+  notify: (msg: string, type?: NotificationType) => void;
+}
+
+const defaultFormData: EditPcpFormData = {
+  nombre: '',
+  descripcion: '',
+  terminos: PCP_TERMINO_OPTIONS[0],
+  imagenes: [],
+};
+
+const EditPcpModal = ({ isOpen, onClose, persona, updatePersonaInteres, notify }: EditPcpModalProps) => {
+  const [formData, setFormData] = useState<EditPcpFormData>(defaultFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -41,7 +64,7 @@ const EditPcpModal = ({ isOpen, onClose, persona, updatePersonaInteres, notify }
     }
   };
 
-  const handleImageChange = async (e) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
@@ -63,19 +86,19 @@ const EditPcpModal = ({ isOpen, onClose, persona, updatePersonaInteres, notify }
         imagenes: [...prev.imagenes, ...base64Images]
       }));
       setError('');
-    } catch (err) {
+    } catch {
       setError('Error al procesar imagenes.');
     }
   };
 
-  const removeImage = (indexToRemove) => {
+  const removeImage = (indexToRemove: number) => {
     setFormData(prev => ({
       ...prev,
       imagenes: prev.imagenes.filter((_, index) => index !== indexToRemove)
     }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!formData.nombre.trim() || !formData.descripcion.trim()) {
       setError('Nombre y descripcion son obligatorios.');
@@ -91,7 +114,7 @@ const EditPcpModal = ({ isOpen, onClose, persona, updatePersonaInteres, notify }
       notify('Registro PCP actualizado exitosamente');
       onClose();
     } catch (err) {
-      setError(err.message || 'Error al actualizar el registro.');
+      setError(err instanceof Error ? err.message : 'Error al actualizar el registro.');
     } finally {
       setIsSubmitting(false);
     }

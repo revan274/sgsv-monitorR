@@ -4,11 +4,22 @@ import { Printer, ShieldCheck, Calendar, Download, Activity } from 'lucide-react
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import type { Incidente, PersonaInteres } from '../types';
 
-export default function KpiReportView({ incidentes, personasInteres }) {
+type ChartRow = {
+  date: string;
+  _ts: number;
+} & Record<string, string | number>;
+
+interface KpiReportViewProps {
+  incidentes: Incidente[];
+  personasInteres: PersonaInteres[];
+}
+
+export default function KpiReportView({ incidentes, personasInteres }: KpiReportViewProps) {
   const [dateRange, setDateRange] = useState(30);
   const [isGenerating, setIsGenerating] = useState(false);
-  const reportRef = useRef(null);
+  const reportRef = useRef<HTMLDivElement | null>(null);
   const now = Date.now();
 
   const handlePrint = async () => {
@@ -56,7 +67,7 @@ export default function KpiReportView({ incidentes, personasInteres }) {
     const incidentesPeriodo = incidentes.filter(inc => normalizeTimestamp(inc.timestamp) >= cutoffDate);
     
     const total = incidentesPeriodo.length;
-    const criticos = incidentesPeriodo.filter(i => i.severidad === 'Critica' || i.severidad === 'Crítica' || i.severidad === 'Alta');
+    const criticos = incidentesPeriodo.filter(i => i.severidad === 'Critica' || i.severidad === 'Alta');
     const abiertos = incidentesPeriodo.filter(i => i.status === 'Abierto' || i.status === 'En seguimiento');
     const cerrados = incidentesPeriodo.filter(i => i.status === 'Cerrado');
     
@@ -69,18 +80,18 @@ export default function KpiReportView({ incidentes, personasInteres }) {
       tiempoPromedio = Math.round(totalMs / cerradosConTiempo.length / (1000 * 60 * 60));
     }
 
-    const byLocation = {};
+    const byLocation: Record<string, number> = {};
     incidentesPeriodo.forEach(inc => {
       byLocation[inc.ubicacion] = (byLocation[inc.ubicacion] || 0) + 1;
     });
 
-    const byType = {};
+    const byType: Record<string, number> = {};
     INCIDENT_TYPES.forEach(t => byType[t] = 0);
     incidentesPeriodo.forEach(inc => {
       byType[inc.tipo] = (byType[inc.tipo] || 0) + 1;
     });
 
-    const chartDataByDate = {};
+    const chartDataByDate: Record<string, ChartRow> = {};
     incidentesPeriodo.forEach(inc => {
       const d = new Date(normalizeTimestamp(inc.timestamp));
       const dk = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -88,7 +99,7 @@ export default function KpiReportView({ incidentes, personasInteres }) {
         chartDataByDate[dk] = { date: dk, _ts: d.getTime() };
         INCIDENT_TYPES.forEach(t => chartDataByDate[dk][t] = 0);
       }
-      chartDataByDate[dk][inc.tipo] = (chartDataByDate[dk][inc.tipo] || 0) + 1;
+      chartDataByDate[dk][inc.tipo] = Number(chartDataByDate[dk][inc.tipo] || 0) + 1;
     });
     const chartData = Object.values(chartDataByDate).sort((a, b) => a._ts - b._ts);
 

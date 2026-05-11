@@ -1,24 +1,53 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ChangeEvent, type FormEvent } from 'react';
 import { PCP_TERMINO_OPTIONS, DEFAULT_PCP_TERMINO, normalizeSearchText, createId, compressImage, safeText, MAX_PCP_IMAGES } from '../lib/utils';
 import { Camera, Plus, Edit2 } from 'lucide-react';
 import EditPcpModal from '../components/ui/EditPcpModal';
+import type { NotificationType, PersonaInteres } from '../types';
+import type { useAppStore } from '../store/useAppStore';
 
-export default function PcpView({ personasInteres, addPersonaInteres, deletePersonaInteres, updatePersonaInteres, setLightboxImage, openModal, notify, canManagePcp }) {
+interface PcpForm {
+  nombre: string;
+  terminos: string;
+  descripcion: string;
+  imagenes: string[];
+}
+
+interface PcpViewProps {
+  personasInteres: PersonaInteres[];
+  addPersonaInteres: ReturnType<typeof useAppStore.getState>['addPersonaInteres'];
+  deletePersonaInteres: ReturnType<typeof useAppStore.getState>['deletePersonaInteres'];
+  updatePersonaInteres: ReturnType<typeof useAppStore.getState>['updatePersonaInteres'];
+  setLightboxImage: (src: string) => void;
+  openModal: (title: string, content: string, onConfirm: () => void | Promise<void>, color?: string) => void;
+  notify: (msg: string, type?: NotificationType) => void;
+  canManagePcp: boolean;
+}
+
+export default function PcpView({
+  personasInteres,
+  addPersonaInteres,
+  deletePersonaInteres,
+  updatePersonaInteres,
+  setLightboxImage,
+  openModal,
+  notify,
+  canManagePcp,
+}: PcpViewProps) {
   const [searchTermPCP, setSearchTermPCP] = useState('');
   const [currentPagePCP, setCurrentPagePCP] = useState(1);
   const PCP_PER_PAGE = 8;
   const [showPCPForm, setShowPCPForm] = useState(false);
-  const [slideIdx, setSlideIdx] = useState({});
-  const [editingPcp, setEditingPcp] = useState(null);
+  const [slideIdx, setSlideIdx] = useState<Record<string, number>>({});
+  const [editingPcp, setEditingPcp] = useState<PersonaInteres | null>(null);
 
-  const [pcpForm, setPcpForm] = useState({
+  const [pcpForm, setPcpForm] = useState<PcpForm>({
     nombre: '', terminos: DEFAULT_PCP_TERMINO, descripcion: '', imagenes: []
   });
 
-  const getSlide = (id) => slideIdx[id] || 0;
-  const setSlide = (id, idx) => setSlideIdx((prev) => ({ ...prev, [id]: idx }));
+  const getSlide = (id: string) => slideIdx[id] || 0;
+  const setSlide = (id: string, idx: number) => setSlideIdx((prev) => ({ ...prev, [id]: idx }));
 
-  const handlePCPImageUpload = async (e) => {
+  const handlePCPImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const availableSlots = Math.max(0, MAX_PCP_IMAGES - pcpForm.imagenes.length);
@@ -37,7 +66,7 @@ export default function PcpView({ personasInteres, addPersonaInteres, deletePers
     e.target.value = '';
   };
 
-  const savePCP = async (e) => {
+  const savePCP = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const nName = pcpForm.nombre.trim();
     if (!nName) { notify('Nombre obligatorio.', 'error'); return; }
@@ -74,7 +103,7 @@ export default function PcpView({ personasInteres, addPersonaInteres, deletePers
     );
   }, [personasInteres, searchTermPCP]);
 
-  const handleSearchChange = (event) => {
+  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
     setSearchTermPCP(event.target.value);
     setCurrentPagePCP(1);
   };
@@ -102,7 +131,7 @@ export default function PcpView({ personasInteres, addPersonaInteres, deletePers
               <select value={pcpForm.terminos} onChange={e => setPcpForm({...pcpForm, terminos: e.target.value})} className="glass-input w-full rounded-lg p-3 text-white">
                 {PCP_TERMINO_OPTIONS.map(t => <option key={t} value={t} className="bg-slate-900">{t}</option>)}
               </select>
-              <textarea placeholder="Notas o detalles..." value={pcpForm.descripcion} onChange={e => setPcpForm({...pcpForm, descripcion: e.target.value})} rows="3" className="glass-input w-full rounded-lg p-3 text-white"/>
+              <textarea placeholder="Notas o detalles..." value={pcpForm.descripcion} onChange={e => setPcpForm({...pcpForm, descripcion: e.target.value})} rows={3} className="glass-input w-full rounded-lg p-3 text-white"/>
             </div>
             <div className="space-y-4">
               <label className="glass-input flex flex-col items-center justify-center w-full h-32 border border-dashed border-amber-500/50 rounded-xl cursor-pointer hover:bg-white/5 transition">

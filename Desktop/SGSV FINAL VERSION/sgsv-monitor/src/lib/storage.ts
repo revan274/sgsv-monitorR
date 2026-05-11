@@ -12,6 +12,34 @@ import type { Incidente, PersonaInteres, Turno, AppConfig } from '../types';
 
 const canUseCloud = (): boolean => isSupabaseConfigured();
 
+type SupabaseErrorResult = {
+  error: { message: string } | null;
+};
+
+const assertSupabaseOk = <T extends SupabaseErrorResult>(result: T, action: string): T => {
+  if (result.error) {
+    throw new Error(`${action}: ${result.error.message}`);
+  }
+  return result;
+};
+
+const normalizeTurno = (turno: unknown): Turno => {
+  const t = (turno && typeof turno === 'object' ? turno : {}) as Record<string, unknown>;
+  return {
+    id: typeof t.id === 'string' && t.id ? t.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    inicio: Number.isFinite(Number(t.inicio)) ? Number(t.inicio) : Date.now(),
+    fin: t.fin == null ? null : Number(t.fin),
+    operador: typeof t.operador === 'string' && t.operador ? t.operador : 'Operador',
+    ubicacion: typeof t.ubicacion === 'string' && t.ubicacion ? t.ubicacion : 'TJ01',
+    notas: Array.isArray(t.notas) ? (t.notas as Turno['notas']) : [],
+    incidenteIds: Array.isArray(t.incidenteIds)
+      ? (t.incidenteIds as string[])
+      : Array.isArray(t.incidente_ids)
+        ? (t.incidente_ids as string[])
+        : [],
+  };
+};
+
 // ─── IDB ─────────────────────────────────────────────────────────────────────
 
 export const loadDataFromIDB = async (): Promise<{ incidentes: Incidente[]; pcp: PersonaInteres[] }> => {
@@ -85,6 +113,9 @@ export const loadDataFromCloud = async (): Promise<{ incidentes: Incidente[]; pc
     supabase.from('personas_interes').select('*').order('nombre', { ascending: true })
   ]);
 
+  assertSupabaseOk(incRes, 'Error al cargar incidentes desde Supabase');
+  assertSupabaseOk(pcpRes, 'Error al cargar PCP desde Supabase');
+
   const rawIncidentes = incRes.data || [];
   const rawPcp = pcpRes.data || [];
 
@@ -131,6 +162,27 @@ export const loadData = async ({
   return loadDataFromIDB();
 };
 
+export const loadTurnosFromCloud = async (): Promise<Turno[]> => {
+  const supabase = requireSupabase();
+  const result = await supabase
+    .from('turnos')
+    .select('*')
+    .order('inicio', { ascending: false });
+
+  assertSupabaseOk(result, 'Error al cargar turnos desde Supabase');
+
+  const turnos = (result.data || []).map(normalizeTurno);
+  await saveTurnosToIDB(turnos);
+  return turnos;
+};
+
+export const loadTurnos = async ({
+  preferCloud = true,
+}: { preferCloud?: boolean } = {}): Promise<Turno[]> => {
+  if (preferCloud && canUseCloud()) return loadTurnosFromCloud();
+  return loadTurnosFromIDB();
+};
+
 // ─── Paginacion server-side ───────────────────────────────────────────────────
 
 export interface IncidentPage {
@@ -154,11 +206,15 @@ export const loadIncidentesPage = async (
   const start = (page - 1) * pageSize;
   const end = start + pageSize - 1;
 
-  const { data, count } = await supabase
+  const result = await supabase
     .from('incidentes')
     .select('*', { count: 'exact' })
     .order('timestamp', { ascending: false })
     .range(start, end);
+
+  assertSupabaseOk(result, 'Error al cargar pagina de incidentes desde Supabase');
+
+  const { data, count } = result;
 
   const mappedIncidentes = (data || []).map(row => ({
     id: row.id,
@@ -193,7 +249,7 @@ export const upsertIncidente = async (incidente: Incidente): Promise<Incidente> 
   const normalized = stripPreviewForStorage(incidente);
   if (canUseCloud()) {
     const supabase = requireSupabase();
-    await supabase.from('incidentes').upsert({
+    const result = await supabase.from('incidentes').upsert({
       id: normalized.id,
       fecha: normalized.fecha,
       timestamp: normalized.timestamp,
@@ -211,6 +267,7 @@ export const upsertIncidente = async (incidente: Incidente): Promise<Incidente> 
       notas: normalized.notas,
       turno_id: normalized.turnoId
     });
+    assertSupabaseOk(result, 'Error guardando incidente en Supabase');
   }
   return normalized;
 };
@@ -218,7 +275,8 @@ export const upsertIncidente = async (incidente: Incidente): Promise<Incidente> 
 export const deleteIncidenteById = async (id: string): Promise<void> => {
   if (canUseCloud()) {
     const supabase = requireSupabase();
-    await supabase.from('incidentes').delete().eq('id', id);
+    const result = await supabase.from('incidentes').delete().eq('id', id);
+    assertSupabaseOk(result, 'Error eliminando incidente en Supabase');
   }
 };
 
@@ -226,7 +284,7 @@ export const upsertPersonaInteres = async (persona: PersonaInteres): Promise<Per
   const normalized = normalizePersona(persona);
   if (canUseCloud()) {
     const supabase = requireSupabase();
-    await supabase.from('personas_interes').upsert({
+    const result = await supabase.from('personas_interes').upsert({
       id: normalized.id,
       fecha_registro: normalized.fechaRegistro,
       nombre: normalized.nombre,
@@ -234,6 +292,7 @@ export const upsertPersonaInteres = async (persona: PersonaInteres): Promise<Per
       descripcion: normalized.descripcion,
       imagenes: normalized.imagenes
     });
+    assertSupabaseOk(result, 'Error guardando PCP en Supabase');
   }
   return normalized;
 };
@@ -241,14 +300,15 @@ export const upsertPersonaInteres = async (persona: PersonaInteres): Promise<Per
 export const deletePersonaInteresById = async (id: string): Promise<void> => {
   if (canUseCloud()) {
     const supabase = requireSupabase();
-    await supabase.from('personas_interes').delete().eq('id', id);
+    const result = await supabase.from('personas_interes').delete().eq('id', id);
+    assertSupabaseOk(result, 'Error eliminando PCP en Supabase');
   }
 };
 
 export const upsertTurno = async (turno: Turno): Promise<void> => {
   if (canUseCloud()) {
     const supabase = requireSupabase();
-    await supabase.from('turnos').upsert({
+    const result = await supabase.from('turnos').upsert({
       id: turno.id,
       inicio: turno.inicio,
       fin: turno.fin,
@@ -257,5 +317,6 @@ export const upsertTurno = async (turno: Turno): Promise<void> => {
       notas: turno.notas,
       incidente_ids: turno.incidenteIds
     });
+    assertSupabaseOk(result, 'Error guardando turno en Supabase');
   }
 };

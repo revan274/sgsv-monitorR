@@ -1,11 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import { X, Download, ZoomIn, ZoomOut } from 'lucide-react';
 
-export default function Lightbox({ imageSrc, onClose }) {
+interface LightboxProps {
+  imageSrc: string | null;
+  onClose: () => void;
+}
+
+export default function Lightbox({ imageSrc, onClose }: LightboxProps) {
   const [scale, setScale] = useState(1);
 
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -14,7 +19,7 @@ export default function Lightbox({ imageSrc, onClose }) {
 
   if (!imageSrc) return null;
 
-  const handleDownload = (e) => {
+  const handleDownload = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     const link = document.createElement('a');
     link.href = imageSrc;

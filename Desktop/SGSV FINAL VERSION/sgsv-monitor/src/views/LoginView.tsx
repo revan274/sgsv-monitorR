@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Cloud, LockKeyhole, LogIn, ShieldCheck } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
@@ -9,12 +9,12 @@ export default function LoginView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState('');
 
-  const handleChange = (event) => {
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     setCredentials((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLocalError('');
     setIsSubmitting(true);
@@ -22,7 +22,7 @@ export default function LoginView() {
     try {
       await signIn(credentials);
     } catch (error) {
-      setLocalError(error.message || 'No se pudo iniciar sesion.');
+      setLocalError(error instanceof Error ? error.message : 'No se pudo iniciar sesion.');
     } finally {
       setIsSubmitting(false);
     }

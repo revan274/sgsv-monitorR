@@ -13,7 +13,7 @@ import { useAppStore } from '../store/useAppStore';
 import { FileImage, User, Send, Video, X } from 'lucide-react';
 import type { UserProfile, NotificationType } from '../types';
 
-const MAX_VIDEO_MB = 50;
+const MAX_VIDEO_MB = 8;
 
 interface NewIncidentViewProps {
   addIncidente: ReturnType<typeof useAppStore.getState>['addIncidente'];

@@ -1,17 +1,15 @@
 services:
   - type: web
-    name: sgsv-api
-    runtime: node
-    rootDir: api
-    buildCommand: npm install
-    startCommand: npm start
-    plan: free
+    name: sgsv-monitor
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        sync: false   # configurar manualmente en Render dashboard
-      - key: JWT_SECRET
-        generateValue: true
-      - key: CORS_ORIGIN
-        sync: false   # URL de Cloudflare Pages
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

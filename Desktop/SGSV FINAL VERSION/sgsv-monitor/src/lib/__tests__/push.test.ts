@@ -89,8 +89,7 @@ describe('showLocalNotification', () => {
   });
 
   it('does nothing if permission is not granted', () => {
-    const NotificationSpy = vi.fn();
-    NotificationSpy.permission = 'default';
+    const NotificationSpy = Object.assign(vi.fn(), { permission: 'default' as NotificationPermission });
     vi.stubGlobal('Notification', NotificationSpy);
     Object.defineProperty(globalThis.navigator, 'serviceWorker', {
       value: {},
@@ -102,8 +101,7 @@ describe('showLocalNotification', () => {
   });
 
   it('creates a Notification when permission is granted', () => {
-    const NotificationSpy = vi.fn();
-    NotificationSpy.permission = 'granted';
+    const NotificationSpy = Object.assign(vi.fn(), { permission: 'granted' as NotificationPermission });
     vi.stubGlobal('Notification', NotificationSpy);
     Object.defineProperty(globalThis.navigator, 'serviceWorker', {
       value: {},
@@ -122,8 +120,7 @@ describe('showLocalNotification', () => {
 
 describe('notifyCriticalIncident', () => {
   it('calls showLocalNotification with incidente details', () => {
-    const NotificationSpy = vi.fn();
-    NotificationSpy.permission = 'granted';
+    const NotificationSpy = Object.assign(vi.fn(), { permission: 'granted' as NotificationPermission });
     vi.stubGlobal('Notification', NotificationSpy);
     Object.defineProperty(globalThis.navigator, 'serviceWorker', {
       value: {},
