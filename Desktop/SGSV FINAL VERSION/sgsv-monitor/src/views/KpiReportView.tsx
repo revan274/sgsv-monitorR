@@ -25,9 +25,22 @@ export default function KpiReportView({ incidentes, personasInteres }) {
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pdfWidth  = pdf.internal.pageSize.getWidth();   // 210mm
+      const pdfPageH  = pdf.internal.pageSize.getHeight();  // 297mm
+      const imgWidth  = pdfWidth;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      // Distribuir en tantas páginas A4 como hagan falta
+      let heightLeft = imgHeight;
+      let position   = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pdfPageH;
+      while (heightLeft > 0) {
+        position  -= pdfPageH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfPageH;
+      }
       pdf.save(`Reporte_SGSV_${dateRange}dias.pdf`);
     } catch {
       // Si falla html2canvas (CORS en producción), abre el diálogo de impresión del navegador
