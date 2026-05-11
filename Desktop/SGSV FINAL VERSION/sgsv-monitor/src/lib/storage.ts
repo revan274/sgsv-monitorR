@@ -1,5 +1,5 @@
 import { get, set } from 'idb-keyval';
-import { api, isApiConfigured, getToken } from './apiClient';
+import { isSupabaseConfigured, requireSupabase } from './supabaseClient';
 import {
   STORAGE_KEYS,
   normalizeIncident,
@@ -10,7 +10,7 @@ import {
 } from './utils';
 import type { Incidente, PersonaInteres, Turno, AppConfig } from '../types';
 
-const canUseCloud = (): boolean => isApiConfigured() && Boolean(getToken());
+const canUseCloud = (): boolean => isSupabaseConfigured();
 
 // ─── IDB ─────────────────────────────────────────────────────────────────────
 
@@ -78,15 +78,47 @@ export const loadConfigFromIDB = async (): Promise<AppConfig> => {
 // ─── Carga desde API ──────────────────────────────────────────────────────────
 
 export const loadDataFromCloud = async (): Promise<{ incidentes: Incidente[]; pcp: PersonaInteres[] }> => {
+  const supabase = requireSupabase();
+  
   const [incRes, pcpRes] = await Promise.all([
-    api.get('/incidentes?limit=500') as Promise<{ incidentes: unknown[] }>,
-    api.get('/personas') as Promise<unknown[]>,
+    supabase.from('incidentes').select('*').order('timestamp', { ascending: false }).limit(500),
+    supabase.from('personas_interes').select('*').order('nombre', { ascending: true })
   ]);
 
-  const incidentes = sortByTimestampDesc(
-    (incRes.incidentes || []).map(normalizeIncident),
-  );
-  const pcp = (Array.isArray(pcpRes) ? pcpRes : []).map(normalizePersona);
+  const rawIncidentes = incRes.data || [];
+  const rawPcp = pcpRes.data || [];
+
+  // Map snake_case to camelCase
+  const mappedIncidentes = rawIncidentes.map(row => ({
+    id: row.id,
+    fecha: row.fecha,
+    timestamp: row.timestamp,
+    titulo: row.titulo,
+    tipo: row.tipo,
+    severidad: row.severidad,
+    descripcion: row.descripcion,
+    ubicacion: row.ubicacion,
+    status: row.status,
+    responsable: row.responsable,
+    imagenEvidencia: row.imagen_evidencia,
+    imagenPersona: row.imagen_persona,
+    videoEvidencia: row.video_evidencia,
+    closedAt: row.closed_at,
+    notas: row.notas,
+    turnoId: row.turno_id
+  }));
+
+  const mappedPcp = rawPcp.map(row => ({
+    id: row.id,
+    fechaRegistro: row.fecha_registro,
+    nombre: row.nombre,
+    terminos: row.terminos,
+    descripcion: row.descripcion,
+    imagenes: row.imagenes
+  }));
+
+  const incidentes = sortByTimestampDesc(mappedIncidentes.map(normalizeIncident));
+  const pcp = mappedPcp.map(normalizePersona);
 
   await Promise.all([saveIncidentesToIDB(incidentes), savePcpToIDB(pcp)]);
   return { incidentes, pcp };
@@ -118,14 +150,38 @@ export const loadIncidentesPage = async (
     return { incidentes: incidentes.slice(start, start + pageSize), total: incidentes.length, page, pageSize };
   }
 
-  const res = await api.get(`/incidentes?page=${page}&limit=${pageSize}`) as {
-    incidentes: unknown[];
-    total: number;
-  };
+  const supabase = requireSupabase();
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize - 1;
+
+  const { data, count } = await supabase
+    .from('incidentes')
+    .select('*', { count: 'exact' })
+    .order('timestamp', { ascending: false })
+    .range(start, end);
+
+  const mappedIncidentes = (data || []).map(row => ({
+    id: row.id,
+    fecha: row.fecha,
+    timestamp: row.timestamp,
+    titulo: row.titulo,
+    tipo: row.tipo,
+    severidad: row.severidad,
+    descripcion: row.descripcion,
+    ubicacion: row.ubicacion,
+    status: row.status,
+    responsable: row.responsable,
+    imagenEvidencia: row.imagen_evidencia,
+    imagenPersona: row.imagen_persona,
+    videoEvidencia: row.video_evidencia,
+    closedAt: row.closed_at,
+    notas: row.notas,
+    turnoId: row.turno_id
+  }));
 
   return {
-    incidentes: (res.incidentes || []).map(normalizeIncident),
-    total: res.total ?? 0,
+    incidentes: mappedIncidentes.map(normalizeIncident),
+    total: count ?? 0,
     page,
     pageSize,
   };
@@ -136,27 +192,70 @@ export const loadIncidentesPage = async (
 export const upsertIncidente = async (incidente: Incidente): Promise<Incidente> => {
   const normalized = stripPreviewForStorage(incidente);
   if (canUseCloud()) {
-    await api.post('/incidentes', normalized);
+    const supabase = requireSupabase();
+    await supabase.from('incidentes').upsert({
+      id: normalized.id,
+      fecha: normalized.fecha,
+      timestamp: normalized.timestamp,
+      titulo: normalized.titulo,
+      tipo: normalized.tipo,
+      severidad: normalized.severidad,
+      descripcion: normalized.descripcion,
+      ubicacion: normalized.ubicacion,
+      status: normalized.status,
+      responsable: normalized.responsable,
+      imagen_evidencia: normalized.imagenEvidencia,
+      imagen_persona: normalized.imagenPersona,
+      video_evidencia: normalized.videoEvidencia,
+      closed_at: normalized.closedAt,
+      notas: normalized.notas,
+      turno_id: normalized.turnoId
+    });
   }
   return normalized;
 };
 
 export const deleteIncidenteById = async (id: string): Promise<void> => {
-  if (canUseCloud()) await api.delete(`/incidentes/${id}`);
+  if (canUseCloud()) {
+    const supabase = requireSupabase();
+    await supabase.from('incidentes').delete().eq('id', id);
+  }
 };
 
 export const upsertPersonaInteres = async (persona: PersonaInteres): Promise<PersonaInteres> => {
   const normalized = normalizePersona(persona);
   if (canUseCloud()) {
-    await api.post('/personas', normalized);
+    const supabase = requireSupabase();
+    await supabase.from('personas_interes').upsert({
+      id: normalized.id,
+      fecha_registro: normalized.fechaRegistro,
+      nombre: normalized.nombre,
+      terminos: normalized.terminos,
+      descripcion: normalized.descripcion,
+      imagenes: normalized.imagenes
+    });
   }
   return normalized;
 };
 
 export const deletePersonaInteresById = async (id: string): Promise<void> => {
-  if (canUseCloud()) await api.delete(`/personas/${id}`);
+  if (canUseCloud()) {
+    const supabase = requireSupabase();
+    await supabase.from('personas_interes').delete().eq('id', id);
+  }
 };
 
 export const upsertTurno = async (turno: Turno): Promise<void> => {
-  if (canUseCloud()) await api.post('/turnos', turno);
+  if (canUseCloud()) {
+    const supabase = requireSupabase();
+    await supabase.from('turnos').upsert({
+      id: turno.id,
+      inicio: turno.inicio,
+      fin: turno.fin,
+      operador: turno.operador,
+      ubicacion: turno.ubicacion,
+      notas: turno.notas,
+      incidente_ids: turno.incidenteIds
+    });
+  }
 };

@@ -6,7 +6,15 @@
       "PowerShell(head -100)",
       "Bash(npm install *)",
       "Bash(npx vitest *)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(git commit -m ' *)",
+      "Bash(mkdir \"c:\\\\Users\\\\IngPa\\\\Desktop\\\\SGSV FINAL VERSION\\\\sgsv-monitor\\\\functions\\\\usuarios\\\\[id]\" 2>NUL; echo done)",
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(git rm *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\IngPa\\Desktop\\SGSV FINAL VERSION\\sgsv-monitor\\functions\\usuarios"
     ]
   }
 }

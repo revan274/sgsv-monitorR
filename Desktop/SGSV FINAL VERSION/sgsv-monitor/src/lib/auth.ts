@@ -1,4 +1,4 @@
-import { api, getToken, setToken, isApiConfigured } from './apiClient';
+import { requireSupabase, isSupabaseConfigured } from './supabaseClient';
 import type { Role, Permission, UserProfile, ApiSession } from '../types';
 
 export const ROLES = Object.freeze({
@@ -52,18 +52,35 @@ export const canAccessView = (role: Role | undefined, view: string): boolean => 
 export const getDefaultViewForRole = (role: Role | undefined): string =>
   normalizeRole(role) === ROLES.ADMIN ? 'dashboard' : 'nuevo';
 
-// ─── Auth con JWT ─────────────────────────────────────────────────────────────
+// ─── Auth con Supabase ────────────────────────────────────────────────────────
 
 export const getCurrentSession = async (): Promise<ApiSession | null> => {
-  if (!isApiConfigured()) return null;
-  const token = getToken();
-  if (!token) return null;
+  if (!isSupabaseConfigured()) return null;
+  const supabase = requireSupabase();
+  
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session) return null;
 
   try {
-    const user = await api.get('/auth/me') as UserProfile;
-    return { token, user: { ...user, role: normalizeRole(user.role) } };
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+
+    const userProfile: UserProfile = profile
+      ? { id: profile.id, email: profile.email, role: normalizeRole(profile.role) }
+      : {
+          id: session.user.id,
+          email: session.user.email || '',
+          role: normalizeRole(
+            (session.user.app_metadata?.role as string | undefined) ||
+            (session.user.user_metadata?.role as string | undefined),
+          ),
+        };
+
+    return { token: session.access_token, user: userProfile };
   } catch {
-    setToken(null);
     return null;
   }
 };
@@ -75,21 +92,55 @@ export const signInWithEmail = async ({
   email: string;
   password: string;
 }): Promise<ApiSession> => {
-  const data = await api.post('/auth/login', { email, password }) as {
-    token: string;
-    user: UserProfile;
-  };
-  setToken(data.token);
-  return { token: data.token, user: { ...data.user, role: normalizeRole(data.user.role) } };
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  
+  if (error || !data.session) {
+    throw new Error(error?.message || 'Error al iniciar sesion');
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', data.session.user.id)
+    .single();
+
+  const userProfile: UserProfile = profile
+    ? { id: profile.id, email: profile.email, role: normalizeRole(profile.role) }
+    : {
+        id: data.session.user.id,
+        email: data.session.user.email || email,
+        role: normalizeRole(
+          (data.session.user.app_metadata?.role as string | undefined) ||
+          (data.session.user.user_metadata?.role as string | undefined),
+        ),
+      };
+
+  return { token: data.session.access_token, user: userProfile };
 };
 
-export const signOut = (): void => {
-  setToken(null);
+export const signOut = async (): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  const supabase = requireSupabase();
+  await supabase.auth.signOut();
 };
 
 export const fetchProfiles = async (): Promise<UserProfile[]> => {
-  const data = await api.get('/usuarios') as UserProfile[];
-  return data.map((u) => ({ ...u, role: normalizeRole(u.role) }));
+  if (!isSupabaseConfigured()) return [];
+  const supabase = requireSupabase();
+  
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('email');
+    
+  if (error || !data) return [];
+  
+  return data.map((u) => ({ 
+    id: u.id,
+    email: u.email,
+    role: normalizeRole(u.role) 
+  }));
 };
 
 export const updateProfileRole = async ({
@@ -99,6 +150,22 @@ export const updateProfileRole = async ({
   id: string;
   role: Role;
 }): Promise<UserProfile> => {
-  const data = await api.put(`/usuarios/${id}/role`, { role }) as UserProfile;
-  return { ...data, role: normalizeRole(data.role) };
+  const supabase = requireSupabase();
+  
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ role })
+    .eq('id', id)
+    .select()
+    .single();
+    
+  if (error || !data) {
+    throw new Error('Error al actualizar el rol');
+  }
+  
+  return { 
+    id: data.id,
+    email: data.email,
+    role: normalizeRole(data.role) 
+  };
 };

@@ -15,7 +15,7 @@ import {
   deletePersonaInteresById,
   upsertTurno,
 } from '../lib/storage';
-import { isApiConfigured } from '../lib/apiClient';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   LOCAL_ADMIN_PROFILE,
   PERMISSIONS,
@@ -121,7 +121,7 @@ export const useAppStore = create<AppStore>()(
     role: ROLES.ADMIN,
     profile: LOCAL_ADMIN_PROFILE,
     session: null,
-    cloudEnabled: isApiConfigured(),
+    cloudEnabled: isSupabaseConfigured(),
 
     authReady: false,
     dataLoaded: false,
@@ -133,7 +133,7 @@ export const useAppStore = create<AppStore>()(
     initializeApp: async () => {
       if (get().booting || get().authReady) return;
 
-      const cloudEnabled = isApiConfigured();
+      const cloudEnabled = isSupabaseConfigured();
       set({ booting: true, cloudEnabled, syncError: null, authError: null });
 
       try {
