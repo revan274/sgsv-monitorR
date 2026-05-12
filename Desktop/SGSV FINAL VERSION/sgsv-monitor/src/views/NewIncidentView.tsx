@@ -4,11 +4,11 @@ import {
   SEVERITY_OPTIONS,
   LOCATION_OPTIONS,
   DEFAULT_INCIDENT_TYPE,
-  compressImage,
   createId,
   normalizeByOptions,
   safeText,
 } from '../lib/utils';
+import { handleMediaFile } from '../lib/mediaStorage';
 import { useAppStore } from '../store/useAppStore';
 import { FileImage, User, Send, Video, X } from 'lucide-react';
 import type { UserProfile, NotificationType } from '../types';
@@ -34,6 +34,7 @@ export default function NewIncidentView({
 
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
+    incidentId: createId(),
     titulo: '',
     tipo: DEFAULT_INCIDENT_TYPE,
     severidad: 'Alta',
@@ -49,34 +50,49 @@ export default function NewIncidentView({
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, field: 'imagenEvidencia' | 'imagenPersona') => {
+  const handleImageChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: 'imagenEvidencia' | 'imagenPersona',
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const dataUrl = await compressImage(file);
-      setFormData((prev) => ({ ...prev, [field]: dataUrl }));
+      const storagePath = `incidents/${formData.incidentId}/${field}_${Date.now()}.jpg`;
+      const result = await handleMediaFile({
+        file,
+        storagePath,
+        entityType: 'incidente',
+        entityId: formData.incidentId,
+        field,
+      });
+      setFormData((prev) => ({ ...prev, [field]: result }));
     } catch {
-      notify('Error al comprimir imagen', 'error');
+      notify('Error al procesar imagen', 'error');
     }
     e.target.value = '';
   };
 
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
       notify(`El video excede ${MAX_VIDEO_MB}MB.`, 'error');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setFormData((prev) => ({
-        ...prev,
-        videoEvidencia: ev.target!.result as string,
-        videoFileName: file.name,
-      }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const storagePath = `incidents/${formData.incidentId}/video_${Date.now()}.${ext}`;
+      const result = await handleMediaFile({
+        file,
+        storagePath,
+        entityType: 'incidente',
+        entityId: formData.incidentId,
+        field: 'videoEvidencia',
+      });
+      setFormData((prev) => ({ ...prev, videoEvidencia: result, videoFileName: file.name }));
+    } catch {
+      notify('Error al procesar el video', 'error');
+    }
     e.target.value = '';
   };
 
@@ -90,7 +106,7 @@ export default function NewIncidentView({
     }
 
     const nuevoIncidente = {
-      id: createId(),
+      id: formData.incidentId,
       fecha: new Date().toLocaleString(),
       timestamp: Date.now(),
       titulo,
@@ -112,6 +128,7 @@ export default function NewIncidentView({
       await addIncidente(nuevoIncidente);
       notify('Incidente registrado correctamente');
       setFormData({
+        incidentId: createId(),
         titulo: '', tipo: DEFAULT_INCIDENT_TYPE, severidad: 'Alta', descripcion: '',
         ubicacion: allLocations[0] || 'TJ01',
         imagenEvidencia: null, imagenPersona: null, videoEvidencia: null, videoFileName: null,

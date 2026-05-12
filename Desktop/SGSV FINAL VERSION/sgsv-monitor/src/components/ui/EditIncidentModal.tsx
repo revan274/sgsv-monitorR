@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, FileText, MapPin, AlertCircle, Trash2, X, AlertTriangle } from 'lucide-react';
-import { INCIDENT_TYPES, SEVERITY_OPTIONS, LOCATION_OPTIONS, STATUS_OPTIONS, compressImage } from '../../lib/utils';
+import { INCIDENT_TYPES, SEVERITY_OPTIONS, LOCATION_OPTIONS, STATUS_OPTIONS } from '../../lib/utils';
+import { handleMediaFile } from '../../lib/mediaStorage';
 import { useAppStore } from '../../store/useAppStore';
 import type { Incidente, IncidentType, LocationOption, NotificationType, SeverityLevel, StatusOption } from '../../types';
 
@@ -90,7 +91,7 @@ const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify
     field: 'imagenEvidencia' | 'imagenPersona',
   ) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !incidente) return;
 
     if (!file.type.startsWith('image/')) {
       setError('Por favor selecciona un archivo de imagen valido.');
@@ -98,10 +99,17 @@ const EditIncidentModal = ({ isOpen, onClose, incidente, updateIncidente, notify
     }
 
     try {
-      const base64 = await compressImage(file);
-      setFormData(prev => ({ ...prev, [field]: base64 }));
+      const storagePath = `incidents/${incidente.id}/${field}_${Date.now()}.jpg`;
+      const result = await handleMediaFile({
+        file,
+        storagePath,
+        entityType: 'incidente',
+        entityId: incidente.id,
+        field,
+      });
+      setFormData(prev => ({ ...prev, [field]: result }));
       setError('');
-    } catch (err) {
+    } catch {
       setError('Error al procesar la imagen.');
     }
   };

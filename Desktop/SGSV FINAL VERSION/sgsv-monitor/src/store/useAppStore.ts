@@ -16,6 +16,7 @@ import {
   deletePersonaInteresById,
   upsertTurno,
 } from '../lib/storage';
+import { processPendingMediaUploads } from '../lib/mediaStorage';
 import { getSupabaseConfigError, hasSupabaseEnv, isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   LOCAL_ADMIN_PROFILE,
@@ -103,6 +104,7 @@ export interface AppActions {
   agregarNotaTurno: (turnoId: string, texto: string) => Promise<void>;
 
   updateConfig: (patch: Partial<AppConfig>) => Promise<void>;
+  syncPendingMedia: () => Promise<void>;
 }
 
 export type AppStore = AppState & AppActions;
@@ -511,6 +513,27 @@ export const useAppStore = create<AppStore>()(
         throw error;
       }
     },
+
+    syncPendingMedia: async () => {
+      const { succeeded } = await processPendingMediaUploads(async ({ entityType, entityId, field, imagenesIndex, url }) => {
+        if (entityType === 'incidente') {
+          const inc = get().incidentes.find((i) => i.id === entityId);
+          if (!inc) return;
+          await get().updateIncidente({ ...inc, [field]: url });
+        } else if (entityType === 'pcp') {
+          const persona = get().personasInteres.find((p) => p.id === entityId);
+          if (!persona) return;
+          if (imagenesIndex !== undefined) {
+            const newImagenes = [...persona.imagenes];
+            newImagenes[imagenesIndex] = url;
+            await get().updatePersonaInteres({ ...persona, imagenes: newImagenes });
+          }
+        }
+      });
+      if (succeeded > 0) {
+        await get().hydrateData();
+      }
+    },
   })),
 );
 
@@ -535,4 +558,17 @@ const bindLocalPersistence = () => {
   );
 };
 
+let mediaSyncBound = false;
+const bindMediaSync = () => {
+  if (mediaSyncBound) return;
+  mediaSyncBound = true;
+  window.addEventListener('online', () => {
+    const { cloudEnabled, session } = useAppStore.getState();
+    if (cloudEnabled && session) {
+      void useAppStore.getState().syncPendingMedia();
+    }
+  });
+};
+
 bindLocalPersistence();
+bindMediaSync();

@@ -119,7 +119,10 @@ export const parseStoredArray = (value: string | null | undefined): unknown[] =>
 };
 
 export const safeImage = (value: unknown): string | null =>
-  typeof value === 'string' && value.startsWith('data:image/') ? value : null;
+  typeof value === 'string' &&
+  (value.startsWith('data:image/') || value.startsWith('https://'))
+    ? value
+    : null;
 
 export const safeVideoUrl = (value: unknown): string | null =>
   typeof value === 'string' &&
@@ -159,8 +162,12 @@ export const normalizePersona = (persona: unknown): PersonaInteres => {
   ) as Record<string, unknown>;
   const imagenes = Array.isArray(n.imagenes)
     ? (n.imagenes as unknown[])
-        .filter((img) => typeof img === 'string' && img.startsWith('data:image/'))
-        .slice(0, MAX_PCP_IMAGES) as string[]
+        .filter(
+          (img): img is string =>
+            typeof img === 'string' &&
+            (img.startsWith('data:image/') || img.startsWith('https://')),
+        )
+        .slice(0, MAX_PCP_IMAGES)
     : [];
   return {
     id: safeText(n.id) || createId(),

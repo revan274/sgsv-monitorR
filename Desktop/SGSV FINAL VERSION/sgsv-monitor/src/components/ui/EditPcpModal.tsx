@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, FileText, Trash2, X, AlertTriangle } from 'lucide-react';
-import { PCP_TERMINO_OPTIONS, compressImage, MAX_PCP_IMAGES } from '../../lib/utils';
+import { PCP_TERMINO_OPTIONS, MAX_PCP_IMAGES } from '../../lib/utils';
+import { handleMediaFile } from '../../lib/mediaStorage';
 import { useAppStore } from '../../store/useAppStore';
 import type { NotificationType, PcpTermino, PersonaInteres } from '../../types';
 
@@ -66,7 +67,7 @@ const EditPcpModal = ({ isOpen, onClose, persona, updatePersonaInteres, notify }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+    if (!files.length || !persona) return;
 
     if (formData.imagenes.length + files.length > MAX_PCP_IMAGES) {
       setError(`Maximo ${MAX_PCP_IMAGES} imagenes permitidas.`);
@@ -74,16 +75,25 @@ const EditPcpModal = ({ isOpen, onClose, persona, updatePersonaInteres, notify }
     }
 
     try {
-      const base64Images = await Promise.all(
-        files.map(async (file) => {
+      const startIndex = formData.imagenes.length;
+      const results = await Promise.all(
+        files.map((file, i) => {
           if (!file.type.startsWith('image/')) throw new Error('Archivo no valido');
-          return await compressImage(file);
-        })
+          const storagePath = `pcp/${persona.id}/${Date.now()}_${startIndex + i}.jpg`;
+          return handleMediaFile({
+            file,
+            storagePath,
+            entityType: 'pcp',
+            entityId: persona.id,
+            field: 'imagenes',
+            imagenesIndex: startIndex + i,
+          });
+        }),
       );
 
       setFormData(prev => ({
         ...prev,
-        imagenes: [...prev.imagenes, ...base64Images]
+        imagenes: [...prev.imagenes, ...results],
       }));
       setError('');
     } catch {
