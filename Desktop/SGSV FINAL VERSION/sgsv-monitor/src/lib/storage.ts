@@ -11,6 +11,7 @@ import {
 import type { Incidente, PersonaInteres, Turno, AppConfig } from '../types';
 
 const canUseCloud = (): boolean => isSupabaseConfigured();
+const CONFIG_ROW_ID = 'global';
 
 type SupabaseErrorResult = {
   error: { message: string } | null;
@@ -37,6 +38,20 @@ const normalizeTurno = (turno: unknown): Turno => {
       : Array.isArray(t.incidente_ids)
         ? (t.incidente_ids as string[])
         : [],
+  };
+};
+
+const normalizeStringArray = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+
+const normalizeConfig = (config: unknown): AppConfig => {
+  const c = (config && typeof config === 'object' ? config : {}) as Record<string, unknown>;
+  return {
+    customLocations: normalizeStringArray(c.customLocations ?? c.custom_locations),
+    customIncidentTypes: normalizeStringArray(c.customIncidentTypes ?? c.custom_incident_types),
+    customPcpTerminos: normalizeStringArray(c.customPcpTerminos ?? c.custom_pcp_terminos),
   };
 };
 
@@ -95,9 +110,9 @@ export const saveConfigToIDB = async (config: AppConfig): Promise<void> => {
 
 export const loadConfigFromIDB = async (): Promise<AppConfig> => {
   try {
-    return (await get<AppConfig>(STORAGE_KEYS.config)) || {
+    return normalizeConfig((await get<AppConfig>(STORAGE_KEYS.config)) || {
       customLocations: [], customIncidentTypes: [], customPcpTerminos: [],
-    };
+    });
   } catch {
     return { customLocations: [], customIncidentTypes: [], customPcpTerminos: [] };
   }
@@ -160,6 +175,48 @@ export const loadData = async ({
 }: { preferCloud?: boolean } = {}): Promise<{ incidentes: Incidente[]; pcp: PersonaInteres[] }> => {
   if (preferCloud && canUseCloud()) return loadDataFromCloud();
   return loadDataFromIDB();
+};
+
+export const loadConfigFromCloud = async (): Promise<AppConfig> => {
+  const supabase = requireSupabase();
+  const result = await supabase
+    .from('app_config')
+    .select('*')
+    .eq('id', CONFIG_ROW_ID)
+    .maybeSingle();
+
+  assertSupabaseOk(result, 'Error al cargar configuracion desde Supabase');
+
+  const config = normalizeConfig(result.data);
+  await saveConfigToIDB(config);
+  return config;
+};
+
+export const loadConfig = async ({
+  preferCloud = true,
+}: { preferCloud?: boolean } = {}): Promise<AppConfig> => {
+  if (preferCloud && canUseCloud()) return loadConfigFromCloud();
+  return loadConfigFromIDB();
+};
+
+export const saveConfig = async (
+  config: AppConfig,
+  { preferCloud = true }: { preferCloud?: boolean } = {},
+): Promise<void> => {
+  const normalized = normalizeConfig(config);
+  await saveConfigToIDB(normalized);
+
+  if (preferCloud && canUseCloud()) {
+    const supabase = requireSupabase();
+    const result = await supabase.from('app_config').upsert({
+      id: CONFIG_ROW_ID,
+      custom_locations: normalized.customLocations,
+      custom_incident_types: normalized.customIncidentTypes,
+      custom_pcp_terminos: normalized.customPcpTerminos,
+      updated_at: new Date().toISOString(),
+    });
+    assertSupabaseOk(result, 'Error guardando configuracion en Supabase');
+  }
 };
 
 export const loadTurnosFromCloud = async (): Promise<Turno[]> => {
@@ -268,6 +325,33 @@ export const upsertIncidente = async (incidente: Incidente): Promise<Incidente> 
       turno_id: normalized.turnoId
     });
     assertSupabaseOk(result, 'Error guardando incidente en Supabase');
+  }
+  return normalized;
+};
+
+export const insertIncidente = async (incidente: Incidente): Promise<Incidente> => {
+  const normalized = stripPreviewForStorage(incidente);
+  if (canUseCloud()) {
+    const supabase = requireSupabase();
+    const result = await supabase.from('incidentes').insert({
+      id: normalized.id,
+      fecha: normalized.fecha,
+      timestamp: normalized.timestamp,
+      titulo: normalized.titulo,
+      tipo: normalized.tipo,
+      severidad: normalized.severidad,
+      descripcion: normalized.descripcion,
+      ubicacion: normalized.ubicacion,
+      status: normalized.status,
+      responsable: normalized.responsable,
+      imagen_evidencia: normalized.imagenEvidencia,
+      imagen_persona: normalized.imagenPersona,
+      video_evidencia: normalized.videoEvidencia,
+      closed_at: normalized.closedAt,
+      notas: normalized.notas,
+      turno_id: normalized.turnoId
+    });
+    assertSupabaseOk(result, 'Error creando incidente en Supabase');
   }
   return normalized;
 };

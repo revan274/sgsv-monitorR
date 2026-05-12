@@ -62,6 +62,14 @@ create table if not exists public.turnos (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.app_config (
+  id text primary key default 'global',
+  custom_locations jsonb not null default '[]'::jsonb,
+  custom_incident_types jsonb not null default '[]'::jsonb,
+  custom_pcp_terminos jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_incidentes_ts on public.incidentes(timestamp desc);
 create index if not exists idx_incidentes_status on public.incidentes(status);
 create index if not exists idx_incidentes_severidad on public.incidentes(severidad);
@@ -116,9 +124,11 @@ alter table public.profiles enable row level security;
 alter table public.incidentes enable row level security;
 alter table public.personas_interes enable row level security;
 alter table public.turnos enable row level security;
+alter table public.app_config enable row level security;
 alter table public.incidentes replica identity full;
 alter table public.personas_interes replica identity full;
 alter table public.turnos replica identity full;
+alter table public.app_config replica identity full;
 
 drop policy if exists "profiles_select_self_or_admin" on public.profiles;
 create policy "profiles_select_self_or_admin"
@@ -222,6 +232,35 @@ for delete
 to authenticated
 using (public.is_admin());
 
+drop policy if exists "app_config_select_authenticated" on public.app_config;
+create policy "app_config_select_authenticated"
+on public.app_config
+for select
+to authenticated
+using (true);
+
+drop policy if exists "app_config_admin_insert" on public.app_config;
+create policy "app_config_admin_insert"
+on public.app_config
+for insert
+to authenticated
+with check (public.is_admin());
+
+drop policy if exists "app_config_admin_update" on public.app_config;
+create policy "app_config_admin_update"
+on public.app_config
+for update
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "app_config_admin_delete" on public.app_config;
+create policy "app_config_admin_delete"
+on public.app_config
+for delete
+to authenticated
+using (public.is_admin());
+
 do $$
 begin
   alter publication supabase_realtime add table public.incidentes;
@@ -239,6 +278,13 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.turnos;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.app_config;
 exception
   when duplicate_object then null;
 end $$;

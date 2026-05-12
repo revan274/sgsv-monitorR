@@ -17,8 +17,8 @@ interface CatalogSectionProps {
   icon: React.ReactNode;
   staticItems: string[];
   customItems: string[];
-  onAdd: (value: string) => void;
-  onRemove: (value: string) => void;
+  onAdd: (value: string) => Promise<void>;
+  onRemove: (value: string) => Promise<void>;
   placeholder: string;
 }
 
@@ -32,14 +32,31 @@ function CatalogSection({
   placeholder,
 }: CatalogSectionProps) {
   const [input, setInput] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const val = input.trim();
-    if (!val) return;
+    if (!val || saving) return;
     const all = [...staticItems, ...customItems].map((s) => s.toLowerCase());
     if (all.includes(val.toLowerCase())) return;
-    onAdd(val);
-    setInput('');
+
+    setSaving(true);
+    try {
+      await onAdd(val);
+      setInput('');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = async (value: string) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onRemove(value);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -49,7 +66,6 @@ function CatalogSection({
         <h3 className="font-bold text-white text-base">{title}</h3>
       </div>
 
-      {/* Estáticos (solo lectura) */}
       <div>
         <p className="text-xs text-slate-500 uppercase font-semibold mb-2">Predefinidos (no editables)</p>
         <div className="flex flex-wrap gap-2">
@@ -64,7 +80,6 @@ function CatalogSection({
         </div>
       </div>
 
-      {/* Personalizados */}
       {customItems.length > 0 && (
         <div>
           <p className="text-xs text-slate-500 uppercase font-semibold mb-2">Personalizados</p>
@@ -76,8 +91,9 @@ function CatalogSection({
               >
                 {item}
                 <button
-                  onClick={() => onRemove(item)}
-                  className="text-indigo-400 hover:text-rose-400 transition"
+                  onClick={() => handleRemove(item)}
+                  disabled={saving}
+                  className="text-indigo-400 hover:text-rose-400 disabled:opacity-40 transition"
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -87,22 +103,26 @@ function CatalogSection({
         </div>
       )}
 
-      {/* Input para agregar */}
       <div className="flex gap-2">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void handleAdd();
+            }
+          }}
           placeholder={placeholder}
           className="glass-input flex-1 rounded-lg px-3 py-2 text-white text-sm"
         />
         <button
           onClick={handleAdd}
-          disabled={!input.trim()}
+          disabled={!input.trim() || saving}
           className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
         >
-          <Plus className="w-4 h-4" /> Agregar
+          <Plus className="w-4 h-4" /> {saving ? 'Guardando' : 'Agregar'}
         </button>
       </div>
     </div>
@@ -113,35 +133,57 @@ export default function SettingsView({ notify }: SettingsViewProps) {
   const config = useAppStore((s) => s.config);
   const updateConfig = useAppStore((s) => s.updateConfig);
 
-  const addLocation = async (val: string) => {
-    await updateConfig({ customLocations: [...(config.customLocations || []), val] });
-    notify(`Ubicación "${val}" agregada.`);
+  const persistConfig = async (
+    patch: Parameters<typeof updateConfig>[0],
+    successMessage: string,
+    type: NotificationType = 'success',
+  ) => {
+    try {
+      await updateConfig(patch);
+      notify(successMessage, type);
+    } catch {
+      notify('No se pudo guardar la configuracion en la base de datos.', 'error');
+    }
   };
 
-  const removeLocation = async (val: string) => {
-    await updateConfig({ customLocations: (config.customLocations || []).filter((v) => v !== val) });
-    notify(`Ubicación "${val}" eliminada.`, 'warning');
-  };
+  const addLocation = (val: string) =>
+    persistConfig(
+      { customLocations: [...(config.customLocations || []), val] },
+      `Ubicacion "${val}" agregada.`,
+    );
 
-  const addIncidentType = async (val: string) => {
-    await updateConfig({ customIncidentTypes: [...(config.customIncidentTypes || []), val] });
-    notify(`Tipo "${val}" agregado.`);
-  };
+  const removeLocation = (val: string) =>
+    persistConfig(
+      { customLocations: (config.customLocations || []).filter((v) => v !== val) },
+      `Ubicacion "${val}" eliminada.`,
+      'warning',
+    );
 
-  const removeIncidentType = async (val: string) => {
-    await updateConfig({ customIncidentTypes: (config.customIncidentTypes || []).filter((v) => v !== val) });
-    notify(`Tipo "${val}" eliminado.`, 'warning');
-  };
+  const addIncidentType = (val: string) =>
+    persistConfig(
+      { customIncidentTypes: [...(config.customIncidentTypes || []), val] },
+      `Tipo "${val}" agregado.`,
+    );
 
-  const addPcpTermino = async (val: string) => {
-    await updateConfig({ customPcpTerminos: [...(config.customPcpTerminos || []), val] });
-    notify(`Término PCP "${val}" agregado.`);
-  };
+  const removeIncidentType = (val: string) =>
+    persistConfig(
+      { customIncidentTypes: (config.customIncidentTypes || []).filter((v) => v !== val) },
+      `Tipo "${val}" eliminado.`,
+      'warning',
+    );
 
-  const removePcpTermino = async (val: string) => {
-    await updateConfig({ customPcpTerminos: (config.customPcpTerminos || []).filter((v) => v !== val) });
-    notify(`Término "${val}" eliminado.`, 'warning');
-  };
+  const addPcpTermino = (val: string) =>
+    persistConfig(
+      { customPcpTerminos: [...(config.customPcpTerminos || []), val] },
+      `Termino PCP "${val}" agregado.`,
+    );
+
+  const removePcpTermino = (val: string) =>
+    persistConfig(
+      { customPcpTerminos: (config.customPcpTerminos || []).filter((v) => v !== val) },
+      `Termino "${val}" eliminado.`,
+      'warning',
+    );
 
   return (
     <div className="space-y-6 animate-fade-in no-print">
@@ -150,9 +192,9 @@ export default function SettingsView({ notify }: SettingsViewProps) {
           <Settings className="w-6 h-6 text-slate-300" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-white">Configuración del Sistema</h2>
+          <h2 className="text-2xl font-bold text-white">Configuracion del Sistema</h2>
           <p className="text-sm text-slate-400 mt-0.5">
-            Personaliza los catálogos de datos. Los cambios aplican de inmediato en todos los formularios.
+            Personaliza los catalogos de datos. Los cambios se guardan en la base de datos cuando Cloud esta activo.
           </p>
         </div>
       </div>
@@ -178,7 +220,7 @@ export default function SettingsView({ notify }: SettingsViewProps) {
       />
 
       <CatalogSection
-        title="Términos PCP (motivos de lista negra)"
+        title="Terminos PCP (motivos de lista negra)"
         icon={<Shield className="w-5 h-5 text-amber-400" />}
         staticItems={[...PCP_TERMINO_OPTIONS]}
         customItems={config.customPcpTerminos || []}

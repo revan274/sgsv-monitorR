@@ -65,6 +65,14 @@ create table if not exists public.turnos (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.app_config (
+  id text primary key default 'global',
+  custom_locations jsonb not null default '[]'::jsonb,
+  custom_incident_types jsonb not null default '[]'::jsonb,
+  custom_pcp_terminos jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_incidentes_ts on public.incidentes(timestamp desc);
 create index if not exists idx_incidentes_status on public.incidentes(status);
 create index if not exists idx_incidentes_severidad on public.incidentes(severidad);
@@ -119,9 +127,11 @@ alter table public.profiles enable row level security;
 alter table public.incidentes enable row level security;
 alter table public.personas_interes enable row level security;
 alter table public.turnos enable row level security;
+alter table public.app_config enable row level security;
 alter table public.incidentes replica identity full;
 alter table public.personas_interes replica identity full;
 alter table public.turnos replica identity full;
+alter table public.app_config replica identity full;
 
 drop policy if exists "profiles_select_self_or_admin" on public.profiles;
 create policy "profiles_select_self_or_admin"
@@ -146,11 +156,12 @@ to authenticated
 with check (coalesce(created_by, auth.uid()) = auth.uid() or public.is_admin());
 
 drop policy if exists "incidentes_admin_select" on public.incidentes;
-create policy "incidentes_admin_select"
+drop policy if exists "incidentes_select_authenticated" on public.incidentes;
+create policy "incidentes_select_authenticated"
 on public.incidentes
 for select
 to authenticated
-using (public.is_admin());
+using (true);
 
 drop policy if exists "incidentes_admin_update" on public.incidentes;
 create policy "incidentes_admin_update"
@@ -168,11 +179,12 @@ to authenticated
 using (public.is_admin());
 
 drop policy if exists "pcp_admin_select" on public.personas_interes;
-create policy "pcp_admin_select"
+drop policy if exists "pcp_select_authenticated" on public.personas_interes;
+create policy "pcp_select_authenticated"
 on public.personas_interes
 for select
 to authenticated
-using (public.is_admin());
+using (true);
 
 drop policy if exists "pcp_admin_insert" on public.personas_interes;
 create policy "pcp_admin_insert"
@@ -197,30 +209,62 @@ to authenticated
 using (public.is_admin());
 
 drop policy if exists "turnos_admin_select" on public.turnos;
-create policy "turnos_admin_select"
+drop policy if exists "turnos_select_authenticated" on public.turnos;
+create policy "turnos_select_authenticated"
 on public.turnos
 for select
 to authenticated
-using (public.is_admin());
+using (true);
 
 drop policy if exists "turnos_admin_insert" on public.turnos;
-create policy "turnos_admin_insert"
+drop policy if exists "turnos_insert_authenticated" on public.turnos;
+create policy "turnos_insert_authenticated"
 on public.turnos
+for insert
+to authenticated
+with check (true);
+
+drop policy if exists "turnos_admin_update" on public.turnos;
+drop policy if exists "turnos_update_authenticated" on public.turnos;
+create policy "turnos_update_authenticated"
+on public.turnos
+for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "turnos_admin_delete" on public.turnos;
+create policy "turnos_admin_delete"
+on public.turnos
+for delete
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "app_config_select_authenticated" on public.app_config;
+create policy "app_config_select_authenticated"
+on public.app_config
+for select
+to authenticated
+using (true);
+
+drop policy if exists "app_config_admin_insert" on public.app_config;
+create policy "app_config_admin_insert"
+on public.app_config
 for insert
 to authenticated
 with check (public.is_admin());
 
-drop policy if exists "turnos_admin_update" on public.turnos;
-create policy "turnos_admin_update"
-on public.turnos
+drop policy if exists "app_config_admin_update" on public.app_config;
+create policy "app_config_admin_update"
+on public.app_config
 for update
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());
 
-drop policy if exists "turnos_admin_delete" on public.turnos;
-create policy "turnos_admin_delete"
-on public.turnos
+drop policy if exists "app_config_admin_delete" on public.app_config;
+create policy "app_config_admin_delete"
+on public.app_config
 for delete
 to authenticated
 using (public.is_admin());
@@ -242,6 +286,13 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.turnos;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.app_config;
 exception
   when duplicate_object then null;
 end $$;

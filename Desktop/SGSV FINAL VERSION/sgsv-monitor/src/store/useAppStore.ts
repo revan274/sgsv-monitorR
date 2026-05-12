@@ -7,8 +7,9 @@ import {
   savePcpToIDB,
   saveTurnosToIDB,
   loadTurnos,
-  saveConfigToIDB,
-  loadConfigFromIDB,
+  loadConfig,
+  saveConfig,
+  insertIncidente,
   upsertIncidente,
   deleteIncidenteById,
   upsertPersonaInteres,
@@ -197,14 +198,15 @@ export const useAppStore = create<AppStore>()(
 
       if (cloudEnabled && role === ROLES.OPERATOR) {
         const { incidentes } = await loadDataFromIDB();
-        set({ incidentes, personasInteres: [], dataLoaded: true });
+        const config = await loadConfig({ preferCloud: Boolean(session) });
+        set({ incidentes, personasInteres: [], config, dataLoaded: true });
         return;
       }
 
       try {
         const { incidentes, pcp } = await loadData({ preferCloud: Boolean(cloudEnabled && session) });
         const turnos = await loadTurnos({ preferCloud: Boolean(cloudEnabled && session) });
-        const config = await loadConfigFromIDB();
+        const config = await loadConfig({ preferCloud: Boolean(cloudEnabled && session) });
         const turnoActivo = turnos.find((t) => !t.fin) ?? null;
 
         set({ incidentes, personasInteres: pcp, turnos, turnoActivo, config, dataLoaded: true });
@@ -277,7 +279,7 @@ export const useAppStore = create<AppStore>()(
           await saveTurnosToIDB(nextTurnos);
           await upsertTurno(updatedTurno);
         }
-        await upsertIncidente(normalized);
+        await insertIncidente(normalized);
       } catch (error) {
         set({
           incidentes,
@@ -495,9 +497,19 @@ export const useAppStore = create<AppStore>()(
     // ─── Config ───────────────────────────────────────────────────────────────
 
     updateConfig: async (patch) => {
+      const prevConfig = get().config;
       const nextConfig: AppConfig = { ...get().config, ...patch };
       set({ config: nextConfig });
-      await saveConfigToIDB(nextConfig);
+      try {
+        await saveConfig(nextConfig, { preferCloud: Boolean(get().cloudEnabled && get().session) });
+      } catch (error) {
+        set({
+          config: prevConfig,
+          syncError: (error as Error).message || 'Error guardando configuracion.',
+        });
+        await saveConfig(prevConfig, { preferCloud: false });
+        throw error;
+      }
     },
   })),
 );

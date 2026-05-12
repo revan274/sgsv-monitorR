@@ -73,7 +73,7 @@ export default function KpiReportView({ incidentes, personasInteres }: KpiReport
     
     const resolucion = total > 0 ? Math.round((cerrados.length / total) * 100) : 0;
     
-    const cerradosConTiempo = cerrados.filter(i => i.closedAt && i.timestamp);
+    const cerradosConTiempo = cerrados.filter(i => i.closedAt != null && i.timestamp != null);
     let tiempoPromedio = 0;
     if (cerradosConTiempo.length > 0) {
       const totalMs = cerradosConTiempo.reduce((acc, i) => acc + (normalizeTimestamp(i.closedAt) - normalizeTimestamp(i.timestamp)), 0);
