@@ -9,7 +9,7 @@ import {
   toCsvCell,
 } from '../lib/utils';
 import { generateIncidentsPdf } from '../lib/pdfGenerator';
-import { Download, FileText, Trash2, Edit2 } from 'lucide-react';
+import { Download, FileText, Trash2, Edit2, Copy } from 'lucide-react';
 import IncidentChart from '../components/ui/IncidentChart';
 import EditIncidentModal from '../components/ui/EditIncidentModal';
 import IncidentNotes from '../components/ui/IncidentNotes';
@@ -196,23 +196,34 @@ export default function HistoryView({
     URL.revokeObjectURL(url);
   };
 
-  const exportCSV = () => {
-    const header = ['ID', 'Fecha', 'Titulo', 'Tipo', 'Severidad', 'Estado', 'Responsable', 'Ubicacion', 'Descripcion'];
+  const buildCsvRows = () => {
+    const header = ['ID', 'Fecha', 'Titulo', 'Tipo', 'Severidad', 'Estado', 'Responsable', 'Ubicacion', 'Descripcion', 'Fecha Cierre', 'Notas'];
     const rows = [header.map(toCsvCell).join(',')];
     filteredIncidentes.forEach((inc) => {
+      const fechaCierre = inc.closedAt ? new Date(inc.closedAt).toLocaleString() : '';
       rows.push([
-        inc.id,
-        inc.fecha,
-        inc.titulo,
-        inc.tipo,
-        inc.severidad,
-        inc.status,
-        inc.responsable,
-        inc.ubicacion,
-        inc.descripcion,
+        inc.id, inc.fecha, inc.titulo, inc.tipo, inc.severidad,
+        inc.status, inc.responsable, inc.ubicacion, inc.descripcion,
+        fechaCierre, String(inc.notas?.length ?? 0),
       ].map(toCsvCell).join(','));
     });
-    downloadFile(new Blob([rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' }), 'reporte_siniestros.csv');
+    return rows;
+  };
+
+  const exportCSV = () => {
+    const bom = '﻿';
+    const content = bom + buildCsvRows().join('\r\n');
+    downloadFile(new Blob([content], { type: 'text/csv;charset=utf-8;' }), 'reporte_siniestros.csv');
+  };
+
+  const copyCSV = async () => {
+    try {
+      const content = buildCsvRows().join('\r\n');
+      await navigator.clipboard.writeText(content);
+      notify('CSV copiado al portapapeles');
+    } catch {
+      notify('No se pudo copiar al portapapeles', 'error');
+    }
   };
 
   const exportJSON = () => {
@@ -220,10 +231,15 @@ export default function HistoryView({
     downloadFile(new Blob([payload], { type: 'application/json;charset=utf-8;' }), 'backup_sgsv.json');
   };
 
-  const exportPDF = async () => {
-    notify('Generando reporte PDF...', 'success');
+  const exportPDF = () => {
     try {
-      await generateIncidentsPdf({ incidentes: filteredIncidentes, chartElementId: 'hidden-chart-export' });
+      const blob = generateIncidentsPdf({ incidentes: filteredIncidentes });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SGSV_Bitacora_${Date.now()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
       notify('Reporte PDF generado correctamente.');
     } catch {
       notify('No se pudo generar el PDF.', 'error');
@@ -252,6 +268,9 @@ export default function HistoryView({
             </button>
             <button onClick={exportCSV} className="text-xs flex items-center gap-1 bg-emerald-600/80 hover:bg-emerald-500 px-3 py-2 rounded-lg text-white backdrop-blur transition">
               <Download className="w-4 h-4" /> CSV
+            </button>
+            <button onClick={copyCSV} className="text-xs flex items-center gap-1 bg-teal-700/80 hover:bg-teal-600 px-3 py-2 rounded-lg text-white backdrop-blur transition">
+              <Copy className="w-4 h-4" /> Copiar
             </button>
             <button onClick={exportJSON} className="text-xs flex items-center gap-1 glass-input px-3 py-2 rounded-lg text-white transition hover:bg-white/10">
               <Download className="w-4 h-4" /> JSON
