@@ -185,7 +185,11 @@ export const loadConfigFromCloud = async (): Promise<AppConfig> => {
     .eq('id', CONFIG_ROW_ID)
     .maybeSingle();
 
-  assertSupabaseOk(result, 'Error al cargar configuracion desde Supabase');
+  // Gracefully fall back to local config if table doesn't exist yet
+  if (result.error) {
+    console.warn('app_config table unavailable, using local config:', result.error.message);
+    return loadConfigFromIDB();
+  }
 
   const config = normalizeConfig(result.data);
   await saveConfigToIDB(config);
@@ -215,7 +219,9 @@ export const saveConfig = async (
       custom_pcp_terminos: normalized.customPcpTerminos,
       updated_at: new Date().toISOString(),
     });
-    assertSupabaseOk(result, 'Error guardando configuracion en Supabase');
+    if (result.error) {
+      console.warn('app_config table unavailable, config saved locally only:', result.error.message);
+    }
   }
 };
 
