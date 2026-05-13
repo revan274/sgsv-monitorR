@@ -17,6 +17,7 @@ import {
   upsertTurno,
 } from '../lib/storage';
 import { processPendingMediaUploads } from '../lib/mediaStorage';
+import { enqueueOp, getQueueCount, processQueue } from '../lib/syncQueue';
 import { getSupabaseConfigError, hasSupabaseEnv, isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   LOCAL_ADMIN_PROFILE,
@@ -79,6 +80,7 @@ export interface AppState {
   syncError: string | null;
   authError: string | null;
   usersLoaded: boolean;
+  pendingOpsCount: number;
 }
 
 export interface AppActions {
@@ -105,6 +107,7 @@ export interface AppActions {
 
   updateConfig: (patch: Partial<AppConfig>) => Promise<void>;
   syncPendingMedia: () => Promise<void>;
+  syncPendingOps: () => Promise<void>;
 }
 
 export type AppStore = AppState & AppActions;
@@ -132,6 +135,7 @@ export const useAppStore = create<AppStore>()(
     syncError: null,
     authError: null,
     usersLoaded: false,
+    pendingOpsCount: 0,
 
     initializeApp: async () => {
       if (get().booting || get().authReady) return;
@@ -171,10 +175,16 @@ export const useAppStore = create<AppStore>()(
         const profile = session?.user ?? null;
         const role = profile?.role || ROLES.OPERATOR;
 
-        set({ session, profile, role, view: getDefaultViewForRole(role), authReady: true });
+        set({
+          session, profile, role,
+          view: getDefaultViewForRole(role),
+          authReady: true,
+          pendingOpsCount: await getQueueCount(),
+        });
 
         if (session) {
-          await get().hydrateData();
+          await get().syncPendingOps();
+          if (!get().dataLoaded) await get().hydrateData();
         } else {
           set({ dataLoaded: true, incidentes: [], personasInteres: [] });
         }
@@ -276,6 +286,19 @@ export const useAppStore = create<AppStore>()(
         set({ turnoActivo: updatedTurno, turnos: nextTurnos });
       }
 
+      const cloud = isSupabaseConfigured();
+      const offline = !navigator.onLine;
+
+      if (cloud && offline) {
+        await enqueueOp({ type: 'upsert', table: 'incidentes', entityId: normalized.id, payload: normalized as unknown as Record<string, unknown> });
+        if (updatedTurno) {
+          await saveTurnosToIDB(nextTurnos);
+          await enqueueOp({ type: 'upsert', table: 'turnos', entityId: updatedTurno.id, payload: updatedTurno as unknown as Record<string, unknown> });
+        }
+        set({ pendingOpsCount: await getQueueCount() });
+        return normalized;
+      }
+
       try {
         if (updatedTurno) {
           await saveTurnosToIDB(nextTurnos);
@@ -283,14 +306,15 @@ export const useAppStore = create<AppStore>()(
         }
         await insertIncidente(normalized);
       } catch (error) {
-        set({
-          incidentes,
-          turnos,
-          turnoActivo,
-          syncError: (error as Error).message || 'Error guardando incidente.',
-        });
-        if (updatedTurno) await saveTurnosToIDB(turnos);
-        throw error;
+        if (cloud) {
+          await enqueueOp({ type: 'upsert', table: 'incidentes', entityId: normalized.id, payload: normalized as unknown as Record<string, unknown> });
+          if (updatedTurno) await enqueueOp({ type: 'upsert', table: 'turnos', entityId: updatedTurno.id, payload: updatedTurno as unknown as Record<string, unknown> });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ incidentes, turnos, turnoActivo, syncError: (error as Error).message || 'Error guardando incidente.' });
+          if (updatedTurno) await saveTurnosToIDB(turnos);
+          throw error;
+        }
       }
 
       return normalized;
@@ -327,11 +351,23 @@ export const useAppStore = create<AppStore>()(
         syncError: null,
       });
 
+      const cloud = isSupabaseConfigured();
+      if (cloud && !navigator.onLine) {
+        await enqueueOp({ type: 'upsert', table: 'incidentes', entityId: updated.id, payload: updated as unknown as Record<string, unknown> });
+        set({ pendingOpsCount: await getQueueCount() });
+        return;
+      }
+
       try {
         await upsertIncidente(updated);
       } catch (error) {
-        set({ incidentes: prevIncidentes, syncError: (error as Error).message || 'Error actualizando.' });
-        throw error;
+        if (cloud) {
+          await enqueueOp({ type: 'upsert', table: 'incidentes', entityId: updated.id, payload: updated as unknown as Record<string, unknown> });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ incidentes: prevIncidentes, syncError: (error as Error).message || 'Error actualizando.' });
+          throw error;
+        }
       }
     },
 
@@ -340,11 +376,24 @@ export const useAppStore = create<AppStore>()(
       assertPermission(role, PERMISSIONS.DELETE_INCIDENTS);
 
       set({ incidentes: incidentes.filter((inc) => inc.id !== id), syncError: null });
+
+      const cloud = isSupabaseConfigured();
+      if (cloud && !navigator.onLine) {
+        await enqueueOp({ type: 'delete', table: 'incidentes', entityId: id, payload: null });
+        set({ pendingOpsCount: await getQueueCount() });
+        return;
+      }
+
       try {
         await deleteIncidenteById(id);
       } catch (error) {
-        set({ incidentes, syncError: (error as Error).message || 'Error eliminando.' });
-        throw error;
+        if (cloud) {
+          await enqueueOp({ type: 'delete', table: 'incidentes', entityId: id, payload: null });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ incidentes, syncError: (error as Error).message || 'Error eliminando.' });
+          throw error;
+        }
       }
     },
 
@@ -357,11 +406,23 @@ export const useAppStore = create<AppStore>()(
       const normalized = normalizePersona(persona);
       set({ personasInteres: [normalized, ...personasInteres], syncError: null });
 
+      const cloud = isSupabaseConfigured();
+      if (cloud && !navigator.onLine) {
+        await enqueueOp({ type: 'upsert', table: 'personas_interes', entityId: normalized.id, payload: normalized as unknown as Record<string, unknown> });
+        set({ pendingOpsCount: await getQueueCount() });
+        return normalized;
+      }
+
       try {
         await upsertPersonaInteres(normalized);
       } catch (error) {
-        set({ personasInteres, syncError: (error as Error).message || 'Error guardando PCP.' });
-        throw error;
+        if (cloud) {
+          await enqueueOp({ type: 'upsert', table: 'personas_interes', entityId: normalized.id, payload: normalized as unknown as Record<string, unknown> });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ personasInteres, syncError: (error as Error).message || 'Error guardando PCP.' });
+          throw error;
+        }
       }
 
       return normalized;
@@ -374,11 +435,23 @@ export const useAppStore = create<AppStore>()(
       const prev = personasInteres;
       set({ personasInteres: personasInteres.map((p) => p.id === updated.id ? { ...p, ...updated } : p) });
 
+      const cloud = isSupabaseConfigured();
+      if (cloud && !navigator.onLine) {
+        await enqueueOp({ type: 'upsert', table: 'personas_interes', entityId: updated.id, payload: updated as unknown as Record<string, unknown> });
+        set({ pendingOpsCount: await getQueueCount() });
+        return;
+      }
+
       try {
         await upsertPersonaInteres(updated);
       } catch (error) {
-        set({ personasInteres: prev, syncError: (error as Error).message || 'Error actualizando PCP.' });
-        throw error;
+        if (cloud) {
+          await enqueueOp({ type: 'upsert', table: 'personas_interes', entityId: updated.id, payload: updated as unknown as Record<string, unknown> });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ personasInteres: prev, syncError: (error as Error).message || 'Error actualizando PCP.' });
+          throw error;
+        }
       }
     },
 
@@ -387,11 +460,24 @@ export const useAppStore = create<AppStore>()(
       assertPermission(role, PERMISSIONS.MANAGE_PCP);
 
       set({ personasInteres: personasInteres.filter((p) => p.id !== id) });
+
+      const cloud = isSupabaseConfigured();
+      if (cloud && !navigator.onLine) {
+        await enqueueOp({ type: 'delete', table: 'personas_interes', entityId: id, payload: null });
+        set({ pendingOpsCount: await getQueueCount() });
+        return;
+      }
+
       try {
         await deletePersonaInteresById(id);
       } catch (error) {
-        set({ personasInteres, syncError: (error as Error).message || 'Error eliminando PCP.' });
-        throw error;
+        if (cloud) {
+          await enqueueOp({ type: 'delete', table: 'personas_interes', entityId: id, payload: null });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ personasInteres, syncError: (error as Error).message || 'Error eliminando PCP.' });
+          throw error;
+        }
       }
     },
 
@@ -436,13 +522,27 @@ export const useAppStore = create<AppStore>()(
 
       const nextTurnos = [nuevoTurno, ...turnos];
       set({ turnos: nextTurnos, turnoActivo: nuevoTurno });
+
+      const cloud = isSupabaseConfigured();
+      if (cloud && !navigator.onLine) {
+        await saveTurnosToIDB(nextTurnos);
+        await enqueueOp({ type: 'upsert', table: 'turnos', entityId: nuevoTurno.id, payload: nuevoTurno as unknown as Record<string, unknown> });
+        set({ pendingOpsCount: await getQueueCount() });
+        return nuevoTurno;
+      }
+
       try {
         await saveTurnosToIDB(nextTurnos);
         await upsertTurno(nuevoTurno);
       } catch (error) {
-        set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error guardando turno.' });
-        await saveTurnosToIDB(turnos);
-        throw error;
+        if (cloud) {
+          await enqueueOp({ type: 'upsert', table: 'turnos', entityId: nuevoTurno.id, payload: nuevoTurno as unknown as Record<string, unknown> });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error guardando turno.' });
+          await saveTurnosToIDB(turnos);
+          throw error;
+        }
       }
 
       return nuevoTurno;
@@ -457,13 +557,27 @@ export const useAppStore = create<AppStore>()(
       const nextTurnos = turnos.map((t) => t.id === id ? cerrado : t);
 
       set({ turnos: nextTurnos, turnoActivo: null });
+
+      const cloud = isSupabaseConfigured();
+      if (cloud && !navigator.onLine) {
+        await saveTurnosToIDB(nextTurnos);
+        await enqueueOp({ type: 'upsert', table: 'turnos', entityId: cerrado.id, payload: cerrado as unknown as Record<string, unknown> });
+        set({ pendingOpsCount: await getQueueCount() });
+        return;
+      }
+
       try {
         await saveTurnosToIDB(nextTurnos);
         await upsertTurno(cerrado);
       } catch (error) {
-        set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error cerrando turno.' });
-        await saveTurnosToIDB(turnos);
-        throw error;
+        if (cloud) {
+          await enqueueOp({ type: 'upsert', table: 'turnos', entityId: cerrado.id, payload: cerrado as unknown as Record<string, unknown> });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error cerrando turno.' });
+          await saveTurnosToIDB(turnos);
+          throw error;
+        }
       }
     },
 
@@ -485,14 +599,28 @@ export const useAppStore = create<AppStore>()(
           : turnoActivo;
 
       set({ turnos: nextTurnos, turnoActivo: nextActivo });
+      const turnoActualizado = nextTurnos.find((t) => t.id === turnoId);
+
+      const cloud = isSupabaseConfigured();
+      if (cloud && !navigator.onLine) {
+        await saveTurnosToIDB(nextTurnos);
+        if (turnoActualizado) await enqueueOp({ type: 'upsert', table: 'turnos', entityId: turnoActualizado.id, payload: turnoActualizado as unknown as Record<string, unknown> });
+        set({ pendingOpsCount: await getQueueCount() });
+        return;
+      }
+
       try {
         await saveTurnosToIDB(nextTurnos);
-        const turnoActualizado = nextTurnos.find((t) => t.id === turnoId);
         if (turnoActualizado) await upsertTurno(turnoActualizado);
       } catch (error) {
-        set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error guardando nota de turno.' });
-        await saveTurnosToIDB(turnos);
-        throw error;
+        if (cloud) {
+          if (turnoActualizado) await enqueueOp({ type: 'upsert', table: 'turnos', entityId: turnoActualizado.id, payload: turnoActualizado as unknown as Record<string, unknown> });
+          set({ pendingOpsCount: await getQueueCount(), syncError: null });
+        } else {
+          set({ turnos, turnoActivo, syncError: (error as Error).message || 'Error guardando nota de turno.' });
+          await saveTurnosToIDB(turnos);
+          throw error;
+        }
       }
     },
 
@@ -534,6 +662,14 @@ export const useAppStore = create<AppStore>()(
         await get().hydrateData();
       }
     },
+
+    syncPendingOps: async () => {
+      const { succeeded } = await processQueue();
+      set({ pendingOpsCount: await getQueueCount() });
+      if (succeeded > 0) {
+        await get().hydrateData();
+      }
+    },
   })),
 );
 
@@ -564,9 +700,11 @@ const bindMediaSync = () => {
   mediaSyncBound = true;
   window.addEventListener('online', () => {
     const { cloudEnabled, session } = useAppStore.getState();
-    if (cloudEnabled && session) {
-      void useAppStore.getState().syncPendingMedia();
-    }
+    if (!cloudEnabled || !session) return;
+    void (async () => {
+      await useAppStore.getState().syncPendingOps();
+      await useAppStore.getState().syncPendingMedia();
+    })();
   });
 };
 

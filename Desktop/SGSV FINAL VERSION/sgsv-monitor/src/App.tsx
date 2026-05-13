@@ -48,6 +48,7 @@ export default function App() {
   const syncError = useAppStore((s) => s.syncError);
   const signOut = useAppStore((s) => s.signOut);
   const turnoActivo = useAppStore((s) => s.turnoActivo);
+  const pendingOpsCount = useAppStore((s) => s.pendingOpsCount);
 
   const [notificacion, setNotificacion] = useState<Notificacion | null>(null);
   const [modalConfig, setModalConfig] = useState<{
@@ -232,7 +233,18 @@ export default function App() {
       {!isOnline && (
         <div className="w-full bg-rose-500/20 text-rose-200 border-b border-rose-500/20 py-2 px-4 flex items-center justify-center gap-2 text-sm z-50">
           <CloudOff className="w-4 h-4" />
-          <span>Sin conexión a internet — Los cambios se guardarán localmente.</span>
+          <span>
+            Sin conexión a internet — Los cambios se guardarán localmente.
+            {pendingOpsCount > 0 && (
+              <span className="ml-2 font-semibold">({pendingOpsCount} pendiente{pendingOpsCount !== 1 ? 's' : ''})</span>
+            )}
+          </span>
+        </div>
+      )}
+      {isOnline && pendingOpsCount > 0 && (
+        <div className="w-full bg-amber-500/20 text-amber-200 border-b border-amber-500/20 py-1.5 px-4 flex items-center justify-center gap-2 text-xs z-50">
+          <AlertTriangle className="w-3.5 h-3.5" />
+          <span>Sincronizando {pendingOpsCount} cambio{pendingOpsCount !== 1 ? 's' : ''} pendiente{pendingOpsCount !== 1 ? 's' : ''}...</span>
         </div>
       )}
 
@@ -304,7 +316,14 @@ export default function App() {
             </button>
 
             <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 px-1">
-              {isOnline ? <Cloud className="w-4 h-4 text-sky-400" /> : <CloudOff className="w-4 h-4 text-rose-400" />}
+              <div className="relative">
+                {isOnline ? <Cloud className="w-4 h-4 text-sky-400" /> : <CloudOff className="w-4 h-4 text-rose-400" />}
+                {pendingOpsCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] bg-amber-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
+                    {pendingOpsCount > 99 ? '99+' : pendingOpsCount}
+                  </span>
+                )}
+              </div>
               <span>{cloudEnabled ? 'Cloud' : 'Local'} / {roleLabel}</span>
             </div>
 
