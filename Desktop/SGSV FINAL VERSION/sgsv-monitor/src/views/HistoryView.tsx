@@ -10,7 +10,6 @@ import {
 } from '../lib/utils';
 import { generateIncidentsPdf } from '../lib/pdfGenerator';
 import { Download, FileText, Trash2, Edit2, Copy } from 'lucide-react';
-import IncidentChart from '../components/ui/IncidentChart';
 import EditIncidentModal from '../components/ui/EditIncidentModal';
 import IncidentNotes from '../components/ui/IncidentNotes';
 import type { Incidente, NotificationType, SeverityLevel, StatusOption } from '../types';
@@ -406,11 +405,6 @@ export default function HistoryView({
           <button disabled={safeCurrentPage === totalIncPages} onClick={() => setCurrentPageInc((page) => Math.min(totalIncPages, page + 1))} className="px-4 py-2 glass-input rounded-lg disabled:opacity-30 text-sm font-medium cursor-pointer">Siguiente</button>
         </div>
       )}
-
-      {/* Gráfico oculto exclusivo para el renderizado del PDF mediante html2canvas */}
-      <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '800px' }}>
-        <IncidentChart incidentesPrepared={incidentesPrepared} containerId="hidden-chart-export" />
-      </div>
 
       <EditIncidentModal
         isOpen={!!editingIncident}

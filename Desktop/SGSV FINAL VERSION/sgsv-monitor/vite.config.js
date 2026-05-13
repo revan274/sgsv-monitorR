@@ -2,9 +2,17 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { resolve } from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: {
+      // jsPDF bundles a reference to html2canvas for its html() method which
+      // we never call. Stub it out to save ~200 kB in the production bundle.
+      'html2canvas': resolve('./src/stubs/html2canvas-stub.js'),
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
