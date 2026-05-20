@@ -8,10 +8,36 @@ import ErrorBoundary from './components/ui/ErrorBoundary';
 import { notifyCriticalIncident, requestNotificationPermission } from './lib/push';
 import type { Incidente } from './types';
 
-registerSW({
-  immediate: true,
+const updateSW = registerSW({
+  onNeedRefresh() {
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 right-4 z-[9999] bg-indigo-950/90 text-indigo-100 px-4 py-3 rounded-xl shadow-[0_0_30px_rgba(79,70,229,0.3)] border border-indigo-500/50 flex flex-col gap-3 backdrop-blur animate-slide-up';
+    toast.innerHTML = `
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+        </div>
+        <p class="text-sm font-medium">¡Nueva versión disponible!</p>
+      </div>
+      <div class="flex gap-2 justify-end">
+        <button id="pwa-close-btn" class="bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded text-xs font-bold transition">Ignorar</button>
+        <button id="pwa-refresh-btn" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-xs font-bold transition shadow-lg shadow-indigo-500/20">Actualizar ahora</button>
+      </div>
+    `;
+    document.body.appendChild(toast);
+    
+    document.getElementById('pwa-refresh-btn')?.addEventListener('click', () => {
+      void updateSW(true);
+    });
+    document.getElementById('pwa-close-btn')?.addEventListener('click', () => {
+      toast.remove();
+    });
+  },
   onRegisteredSW: (_swUrl: string, registration?: ServiceWorkerRegistration) => {
-    registration?.update();
+    // Check for updates every hour in background if app stays open
+    setInterval(() => {
+      registration?.update().catch(() => {});
+    }, 60 * 60 * 1000);
   },
 });
 

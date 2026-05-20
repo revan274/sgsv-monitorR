@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { normalizeSearchText, normalizeTimestamp } from '../lib/utils';
 import AutoVettedSlider from '../components/ui/AutoVettedSlider';
 import IncidentChart from '../components/ui/IncidentChart';
+import LocationPieChart from '../components/ui/LocationPieChart';
 import { ShieldAlert, Activity, CheckCircle2, Clock, TrendingUp, TrendingDown, Minus, Users } from 'lucide-react';
 import type { Incidente, PersonaInteres } from '../types';
 
@@ -203,41 +204,45 @@ export default function DashboardView({
 
       <IncidentChart incidentesPrepared={incidentesPrepared} />
 
-      {/* Estadísticas por operador */}
-      {operatorStats.length > 0 && (
-        <div className="glass-panel p-6 rounded-2xl">
-          <div className="flex items-center gap-2 mb-4">
-            <Users className="w-5 h-5 text-indigo-400" />
-            <h3 className="font-bold text-white">Top Operadores (últimos 30 días)</h3>
-          </div>
-          <div className="space-y-2">
-            {operatorStats.map((op) => (
-              <div key={op.nombre} className="flex items-center gap-3 bg-slate-800/30 rounded-xl px-4 py-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{op.nombre}</p>
-                </div>
-                <div className="flex items-center gap-4 text-xs shrink-0">
-                  <span className="text-slate-400">
-                    <span className="text-white font-bold">{op.total}</span> eventos
-                  </span>
-                  <span className="text-rose-400">
-                    <span className="font-bold">{op.criticos}</span> críticos
-                  </span>
-                  <span className="text-emerald-400">
-                    <span className="font-bold">{op.cerrados}</span> cerrados
-                  </span>
-                  <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full"
-                      style={{ width: `${op.total > 0 ? Math.round((op.cerrados / op.total) * 100) : 0}%` }}
-                    />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <LocationPieChart incidentes={incidentesPrepared} />
+
+        {/* Estadísticas por operador */}
+        {operatorStats.length > 0 && (
+          <div className="glass-panel p-6 rounded-2xl flex flex-col">
+            <div className="flex items-center gap-2 mb-4 shrink-0">
+              <Users className="w-5 h-5 text-indigo-400" />
+              <h3 className="font-bold text-white">Top Operadores (últimos 30 días)</h3>
+            </div>
+            <div className="space-y-2 overflow-y-auto flex-1">
+              {operatorStats.map((op) => (
+                <div key={op.nombre} className="flex items-center gap-3 bg-slate-800/30 rounded-xl px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{op.nombre}</p>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs shrink-0">
+                    <span className="text-slate-400">
+                      <span className="text-white font-bold">{op.total}</span> eventos
+                    </span>
+                    <span className="text-rose-400">
+                      <span className="font-bold">{op.criticos}</span> críticos
+                    </span>
+                    <span className="text-emerald-400">
+                      <span className="font-bold">{op.cerrados}</span> cerrados
+                    </span>
+                    <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden hidden sm:block">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full"
+                        style={{ width: `${op.total > 0 ? Math.round((op.cerrados / op.total) * 100) : 0}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <AutoVettedSlider personasInteres={personasInteres} setLightboxImage={setLightboxImage} />
     </div>

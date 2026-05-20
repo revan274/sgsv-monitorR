@@ -19,6 +19,14 @@ type SupabaseErrorResult = {
 
 const assertSupabaseOk = <T extends SupabaseErrorResult>(result: T, action: string): T => {
   if (result.error) {
+    const msg = result.error.message || '';
+    const code = (result.error as any).code || '';
+    
+    // Detect auth or permission errors
+    if (msg.includes('JWT') || msg.includes('expired') || code === '401' || code === '403' || code === 'PGRST301') {
+      window.dispatchEvent(new CustomEvent('supabase-auth-error'));
+    }
+    
     throw new Error(`${action}: ${result.error.message}`);
   }
   return result;

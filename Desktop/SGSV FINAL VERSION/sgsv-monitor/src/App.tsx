@@ -65,6 +65,15 @@ export default function App() {
   useEffect(() => { initializeApp(); }, [initializeApp]);
 
   useEffect(() => {
+    const handleAuthError = () => {
+      notify('Sesión expirada o permisos insuficientes. Inicia sesión nuevamente.', 'error');
+      void signOut();
+    };
+    window.addEventListener('supabase-auth-error', handleAuthError);
+    return () => window.removeEventListener('supabase-auth-error', handleAuthError);
+  }, [notify, signOut]);
+
+  useEffect(() => {
     if (!notificacion) return undefined;
     const id = setTimeout(() => setNotificacion(null), 4000);
     return () => clearTimeout(id);
