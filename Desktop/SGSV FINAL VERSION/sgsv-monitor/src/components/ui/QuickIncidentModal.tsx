@@ -7,7 +7,7 @@ import {
   createId,
   normalizeByOptions,
 } from '../../lib/utils';
-import type { UserProfile, NotificationType } from '../../types';
+import type { UserProfile, NotificationType, SeverityLevel } from '../../types';
 
 interface QuickIncidentModalProps {
   isOpen: boolean;
@@ -59,7 +59,7 @@ export default function QuickIncidentModal({
         timestamp: Date.now(),
         titulo: `[RÁPIDO] ${form.severidad} — ${form.ubicacion}`,
         tipo: 'Intrusion',
-        severidad: normalizeByOptions(form.severidad, SEVERITY_OPTIONS, 'Alta') as 'Alta',
+        severidad: normalizeByOptions(form.severidad, SEVERITY_OPTIONS, 'Alta') as SeverityLevel,
         descripcion: desc,
         ubicacion: form.ubicacion,
         status: 'Abierto',

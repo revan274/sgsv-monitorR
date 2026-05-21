@@ -6,7 +6,7 @@ import type {
   IncidentType,
 } from '../types';
 
-export const BLACKLIST_TERMS: string[] = ['palabra_bloqueada'];
+export const BLACKLIST_TERMS: string[] = [];
 
 export const STORAGE_KEYS = Object.freeze({
   incidentes: 'sgsv_incidentes',
