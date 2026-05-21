@@ -266,66 +266,6 @@ export const loadTurnos = async ({
   return loadTurnosFromIDB();
 };
 
-// ─── Paginacion server-side ───────────────────────────────────────────────────
-
-export interface IncidentPage {
-  incidentes: Incidente[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
-
-export const loadIncidentesPage = async (
-  page = 1,
-  pageSize = 20,
-): Promise<IncidentPage> => {
-  if (!canUseCloud()) {
-    const { incidentes } = await loadDataFromIDB();
-    const start = (page - 1) * pageSize;
-    return { incidentes: incidentes.slice(start, start + pageSize), total: incidentes.length, page, pageSize };
-  }
-
-  const supabase = requireSupabase();
-  const start = (page - 1) * pageSize;
-  const end = start + pageSize - 1;
-
-  const result = await supabase
-    .from('incidentes')
-    .select('*', { count: 'exact' })
-    .order('timestamp', { ascending: false })
-    .range(start, end);
-
-  assertSupabaseOk(result, 'Error al cargar pagina de incidentes desde Supabase');
-
-  const { data, count } = result;
-
-  const mappedIncidentes = (data || []).map(row => ({
-    id: row.id,
-    fecha: row.fecha,
-    timestamp: row.timestamp,
-    titulo: row.titulo,
-    tipo: row.tipo,
-    severidad: row.severidad,
-    descripcion: row.descripcion,
-    ubicacion: row.ubicacion,
-    status: row.status,
-    responsable: row.responsable,
-    imagenEvidencia: row.imagen_evidencia,
-    imagenPersona: row.imagen_persona,
-    videoEvidencia: row.video_evidencia,
-    closedAt: row.closed_at,
-    notas: row.notas,
-    turnoId: row.turno_id
-  }));
-
-  return {
-    incidentes: mappedIncidentes.map(normalizeIncident),
-    total: count ?? 0,
-    page,
-    pageSize,
-  };
-};
-
 // ─── CRUD Cloud ───────────────────────────────────────────────────────────────
 
 export const upsertIncidente = async (incidente: Incidente): Promise<Incidente> => {

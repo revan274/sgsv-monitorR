@@ -86,15 +86,6 @@ export interface ApiSession {
   user: UserProfile;
 }
 
-export interface SessionLog {
-  id: string;
-  userId: string;
-  email: string;
-  event: 'login' | 'logout';
-  timestamp: number;
-  userAgent?: string;
-}
-
 // ─── Configuracion dinamica ────────────────────────────────────────────────────
 
 export interface AppConfig {
