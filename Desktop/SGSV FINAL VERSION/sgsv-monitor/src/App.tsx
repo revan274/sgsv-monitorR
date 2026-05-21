@@ -46,6 +46,7 @@ export default function App() {
   const profile = useAppStore((s) => s.profile);
   const role = useAppStore((s) => s.role);
   const syncError = useAppStore((s) => s.syncError);
+  const authError = useAppStore((s) => s.authError);
   const signOut = useAppStore((s) => s.signOut);
   const realAuthEnabled = useAppStore((s) => s.realAuthEnabled);
   const turnoActivo = useAppStore((s) => s.turnoActivo);
@@ -85,6 +86,10 @@ export default function App() {
     (message: string, type: NotificationType = 'success') => setNotificacion({ message, type }),
     [],
   );
+
+  useEffect(() => {
+    if (authError && !realAuthEnabled) notify(authError, 'error');
+  }, [authError, realAuthEnabled, notify]);
 
 
   const openModal = useCallback(
@@ -132,7 +137,7 @@ export default function App() {
     );
   }
 
-  if (cloudEnabled && !session) {
+  if (realAuthEnabled && !session) {
     return (
       <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
         <LoginView />
