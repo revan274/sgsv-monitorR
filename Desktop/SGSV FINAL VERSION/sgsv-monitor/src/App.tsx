@@ -334,15 +334,13 @@ export default function App() {
               <span>{cloudEnabled ? 'Cloud' : 'Local'} / {roleLabel}</span>
             </div>
 
-            {realAuthEnabled && (
-              <button
-                onClick={handleSignOut}
-                className="w-full text-left px-3 py-3 rounded-xl transition flex gap-3 items-center text-slate-400 hover:bg-white/5"
-              >
-                <LogOut className="w-5 h-5 shrink-0" />
-                <span className="hidden md:block">Salir</span>
-              </button>
-            )}
+            <button
+              onClick={handleSignOut}
+              className="w-full text-left px-3 py-3 rounded-xl transition flex gap-3 items-center text-slate-400 hover:bg-white/5"
+            >
+              <LogOut className="w-5 h-5 shrink-0" />
+              <span className="hidden md:block">Salir</span>
+            </button>
           </div>
         </aside>
 
