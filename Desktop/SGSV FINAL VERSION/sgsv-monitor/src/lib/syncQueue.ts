@@ -6,6 +6,8 @@ const QUEUE_KEY = 'sgsv_sync_queue';
 export type SyncOpType = 'upsert' | 'delete';
 export type SyncTable = 'incidentes' | 'personas_interes' | 'turnos';
 
+export const MAX_RETRIES = 5;
+
 export interface SyncOperation {
   id: string;
   type: SyncOpType;
@@ -13,6 +15,8 @@ export interface SyncOperation {
   entityId: string;
   payload: Record<string, unknown> | null;
   createdAt: number;
+  retries?: number;
+  lastError?: string;
 }
 
 // ─── Queue management ─────────────────────────────────────────────────────────
@@ -28,6 +32,8 @@ const writeQueue = async (q: SyncOperation[]): Promise<void> => {
 export const getQueueCount = async (): Promise<number> =>
   (await readQueue()).length;
 
+export const clearQueue = async (): Promise<void> => writeQueue([]);
+
 /**
  * Encola una operación CRUD para sincronizar con Supabase cuando haya conexión.
  * Aplica merging inteligente:
@@ -39,23 +45,22 @@ export const enqueueOp = async (
 ): Promise<void> => {
   const q = await readQueue();
 
+  const newOp: SyncOperation = { ...op, id: crypto.randomUUID(), createdAt: Date.now(), retries: 0 };
+
   if (op.type === 'delete') {
-    // El delete cancela cualquier upsert previo
     const filtered = q.filter(
       (o) => !(o.table === op.table && o.entityId === op.entityId),
     );
-    await writeQueue([...filtered, { ...op, id: crypto.randomUUID(), createdAt: Date.now() }]);
+    await writeQueue([...filtered, newOp]);
   } else {
-    // No encolamos un upsert si ya hay un delete pendiente para la misma entidad
     const hasDelete = q.some(
       (o) => o.table === op.table && o.entityId === op.entityId && o.type === 'delete',
     );
     if (hasDelete) return;
-    // Reemplaza upsert previo del mismo entityId (merge de ediciones)
     const filtered = q.filter(
       (o) => !(o.table === op.table && o.entityId === op.entityId),
     );
-    await writeQueue([...filtered, { ...op, id: crypto.randomUUID(), createdAt: Date.now() }]);
+    await writeQueue([...filtered, newOp]);
   }
 };
 
@@ -122,16 +127,17 @@ const toDbRow = (table: SyncTable, payload: Record<string, unknown>): Record<str
  * Cada operación exitosa se elimina de la cola.
  * Las fallidas se mantienen para reintento en la próxima reconexión.
  */
-export const processQueue = async (): Promise<{ succeeded: number; failed: number }> => {
-  if (!isSupabaseConfigured() || !navigator.onLine) return { succeeded: 0, failed: 0 };
+export const processQueue = async (): Promise<{ succeeded: number; failed: number; firstError: string | null }> => {
+  if (!isSupabaseConfigured() || !navigator.onLine) return { succeeded: 0, failed: 0, firstError: null };
 
   const queue = await readQueue();
-  if (!queue.length) return { succeeded: 0, failed: 0 };
+  if (!queue.length) return { succeeded: 0, failed: 0, firstError: null };
 
   const sorted = [...queue].sort((a, b) => a.createdAt - b.createdAt);
   const supabase = requireSupabase();
   let succeeded = 0;
   let failed = 0;
+  let firstError: string | null = null;
 
   for (const op of sorted) {
     try {
@@ -145,10 +151,20 @@ export const processQueue = async (): Promise<{ succeeded: number; failed: numbe
       }
       await removeOp(op.id);
       succeeded++;
-    } catch {
-      failed++;
+    } catch (err) {
+      const msg = (err as Error).message || 'Error desconocido';
+      if (!firstError) firstError = msg;
+      const retries = (op.retries ?? 0) + 1;
+      if (retries >= MAX_RETRIES) {
+        await removeOp(op.id);
+        console.warn(`[SyncQueue] Op descartada tras ${MAX_RETRIES} intentos (${op.table}/${op.entityId}):`, msg);
+      } else {
+        const q = await readQueue();
+        await writeQueue(q.map((o) => o.id === op.id ? { ...o, retries, lastError: msg } : o));
+        failed++;
+      }
     }
   }
 
-  return { succeeded, failed };
+  return { succeeded, failed, firstError };
 };

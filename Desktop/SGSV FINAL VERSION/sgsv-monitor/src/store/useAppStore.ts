@@ -17,7 +17,7 @@ import {
   upsertTurno,
 } from '../lib/storage';
 import { processPendingMediaUploads } from '../lib/mediaStorage';
-import { enqueueOp, getQueueCount, processQueue } from '../lib/syncQueue';
+import { enqueueOp, getQueueCount, processQueue, clearQueue } from '../lib/syncQueue';
 import { getSupabaseConfigError, hasSupabaseEnv, isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   LOCAL_ADMIN_PROFILE,
@@ -107,6 +107,7 @@ export interface AppActions {
   updateConfig: (patch: Partial<AppConfig>) => Promise<void>;
   syncPendingMedia: () => Promise<void>;
   syncPendingOps: () => Promise<void>;
+  clearSyncQueue: () => Promise<void>;
 }
 
 export type AppStore = AppState & AppActions;
@@ -668,11 +669,19 @@ export const useAppStore = create<AppStore>()(
     },
 
     syncPendingOps: async () => {
-      const { succeeded } = await processQueue();
+      const { succeeded, failed, firstError } = await processQueue();
       set({ pendingOpsCount: await getQueueCount() });
+      if (failed > 0 && succeeded === 0 && firstError) {
+        set({ syncError: `Error sincronizando: ${firstError}` });
+      }
       if (succeeded > 0) {
         await get().hydrateData();
       }
+    },
+
+    clearSyncQueue: async () => {
+      await clearQueue();
+      set({ pendingOpsCount: 0, syncError: null });
     },
   })),
 );

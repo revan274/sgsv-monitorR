@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Plus, Trash2, MapPin, Tag, Shield } from 'lucide-react';
+import { Settings, Plus, Trash2, MapPin, Tag, Shield, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
   LOCATION_OPTIONS,
@@ -132,6 +132,12 @@ function CatalogSection({
 export default function SettingsView({ notify }: SettingsViewProps) {
   const config = useAppStore((s) => s.config);
   const updateConfig = useAppStore((s) => s.updateConfig);
+  const pendingOpsCount = useAppStore((s) => s.pendingOpsCount);
+  const syncError = useAppStore((s) => s.syncError);
+  const clearSyncQueue = useAppStore((s) => s.clearSyncQueue);
+  const syncPendingOps = useAppStore((s) => s.syncPendingOps);
+  const [clearing, setClearing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const persistConfig = async (
     patch: Parameters<typeof updateConfig>[0],
@@ -185,6 +191,20 @@ export default function SettingsView({ notify }: SettingsViewProps) {
       'warning',
     );
 
+  const handleRetrySync = async () => {
+    setSyncing(true);
+    try { await syncPendingOps(); notify('Sincronización completada.'); }
+    catch { notify('Error al sincronizar.', 'error'); }
+    finally { setSyncing(false); }
+  };
+
+  const handleClearQueue = async () => {
+    setClearing(true);
+    try { await clearSyncQueue(); notify('Cola de sincronización limpiada.', 'warning'); }
+    catch { notify('Error al limpiar la cola.', 'error'); }
+    finally { setClearing(false); }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in no-print">
       <div className="flex items-center gap-3">
@@ -198,6 +218,46 @@ export default function SettingsView({ notify }: SettingsViewProps) {
           </p>
         </div>
       </div>
+
+      {/* Panel de sincronización */}
+      {(pendingOpsCount > 0 || syncError) && (
+        <div className={`glass-panel p-5 rounded-2xl border ${syncError ? 'border-rose-500/30' : 'border-amber-500/30'}`}>
+          <div className="flex items-start gap-3">
+            <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${syncError ? 'text-rose-400' : 'text-amber-400'}`} />
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-white text-sm">Cola de sincronización</p>
+              {pendingOpsCount > 0 && (
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {pendingOpsCount} cambio{pendingOpsCount !== 1 ? 's' : ''} pendiente{pendingOpsCount !== 1 ? 's' : ''} de sincronizar con Supabase.
+                </p>
+              )}
+              {syncError && (
+                <p className="text-xs text-rose-300 mt-1 font-mono break-all">{syncError}</p>
+              )}
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={handleRetrySync}
+                disabled={syncing}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Sincronizando...' : 'Reintentar'}
+              </button>
+              <button
+                onClick={handleClearQueue}
+                disabled={clearing}
+                className="flex items-center gap-1.5 bg-rose-700/60 hover:bg-rose-600 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition"
+                title="Descarta los cambios pendientes sin sincronizar"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {clearing ? 'Limpiando...' : 'Limpiar cola'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       <CatalogSection
         title="Ubicaciones / Sucursales"
