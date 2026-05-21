@@ -92,7 +92,7 @@ export default function LoginView() {
 
         <div className="mt-6 flex items-center gap-2 text-xs text-slate-500">
           <Cloud className="w-4 h-4 text-sky-400" />
-          <span>Supabase Auth</span>
+          <span>SGSV Cloud</span>
         </div>
       </div>
     </div>

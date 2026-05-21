@@ -11,7 +11,7 @@ import {
 import { handleMediaFile } from '../lib/mediaStorage';
 import { useAppStore } from '../store/useAppStore';
 import { FileImage, User, Send, Video, X } from 'lucide-react';
-import type { UserProfile, NotificationType } from '../types';
+import type { UserProfile, NotificationType, SeverityLevel } from '../types';
 
 const MAX_VIDEO_MB = 8;
 
@@ -111,7 +111,7 @@ export default function NewIncidentView({
       timestamp: Date.now(),
       titulo,
       tipo: normalizeByOptions(formData.tipo, allTypes, DEFAULT_INCIDENT_TYPE),
-      severidad: normalizeByOptions(formData.severidad, SEVERITY_OPTIONS, 'Alta') as 'Alta',
+      severidad: normalizeByOptions(formData.severidad, SEVERITY_OPTIONS, 'Alta') as SeverityLevel,
       descripcion,
       ubicacion: formData.ubicacion,
       status: 'Abierto' as const,

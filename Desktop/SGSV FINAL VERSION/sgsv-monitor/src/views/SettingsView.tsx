@@ -228,7 +228,7 @@ export default function SettingsView({ notify }: SettingsViewProps) {
               <p className="font-bold text-white text-sm">Cola de sincronización</p>
               {pendingOpsCount > 0 && (
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {pendingOpsCount} cambio{pendingOpsCount !== 1 ? 's' : ''} pendiente{pendingOpsCount !== 1 ? 's' : ''} de sincronizar con Supabase.
+                  {pendingOpsCount} cambio{pendingOpsCount !== 1 ? 's' : ''} pendiente{pendingOpsCount !== 1 ? 's' : ''} de sincronizar con el servidor.
                 </p>
               )}
               {syncError && (
