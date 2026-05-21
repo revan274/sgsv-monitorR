@@ -33,7 +33,6 @@ import {
   updateProfileRole,
 } from '../lib/auth';
 import {
-  parseStoredArray,
   normalizeIncident,
   normalizePersona,
   sortByTimestampDesc,
@@ -184,6 +183,7 @@ export const useAppStore = create<AppStore>()(
 
         if (session) {
           await get().syncPendingOps();
+          await get().syncPendingMedia();
           if (!get().dataLoaded) await get().hydrateData();
         } else {
           set({ dataLoaded: true, incidentes: [], personasInteres: [] });
@@ -647,14 +647,18 @@ export const useAppStore = create<AppStore>()(
         if (entityType === 'incidente') {
           const inc = get().incidentes.find((i) => i.id === entityId);
           if (!inc) return;
-          await get().updateIncidente({ ...inc, [field]: url });
+          const updated = { ...inc, [field]: url };
+          set({ incidentes: get().incidentes.map((i) => i.id === entityId ? updated : i) });
+          await upsertIncidente(updated);
         } else if (entityType === 'pcp') {
           const persona = get().personasInteres.find((p) => p.id === entityId);
           if (!persona) return;
           if (imagenesIndex !== undefined) {
             const newImagenes = [...persona.imagenes];
             newImagenes[imagenesIndex] = url;
-            await get().updatePersonaInteres({ ...persona, imagenes: newImagenes });
+            const updated = { ...persona, imagenes: newImagenes };
+            set({ personasInteres: get().personasInteres.map((p) => p.id === entityId ? updated : p) });
+            await upsertPersonaInteres(updated);
           }
         }
       });

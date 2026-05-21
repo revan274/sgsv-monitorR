@@ -97,7 +97,7 @@ export const loadDataFromIDB = async (): Promise<{ incidentes: Incidente[]; pcp:
 };
 
 export const saveIncidentesToIDB = async (incidentes: Incidente[]): Promise<void> => {
-  try { await set(STORAGE_KEYS.incidentes, incidentes.map(stripPreviewForStorage)); } catch { /* ignore */ }
+  try { await set(STORAGE_KEYS.incidentes, incidentes.map(normalizeIncident)); } catch { /* ignore */ }
 };
 
 export const savePcpToIDB = async (pcp: PersonaInteres[]): Promise<void> => {
@@ -181,7 +181,13 @@ export const loadDataFromCloud = async (): Promise<{ incidentes: Incidente[]; pc
 export const loadData = async ({
   preferCloud = true,
 }: { preferCloud?: boolean } = {}): Promise<{ incidentes: Incidente[]; pcp: PersonaInteres[] }> => {
-  if (preferCloud && canUseCloud()) return loadDataFromCloud();
+  if (preferCloud && canUseCloud()) {
+    try {
+      return await loadDataFromCloud();
+    } catch {
+      return loadDataFromIDB();
+    }
+  }
   return loadDataFromIDB();
 };
 
@@ -250,7 +256,13 @@ export const loadTurnosFromCloud = async (): Promise<Turno[]> => {
 export const loadTurnos = async ({
   preferCloud = true,
 }: { preferCloud?: boolean } = {}): Promise<Turno[]> => {
-  if (preferCloud && canUseCloud()) return loadTurnosFromCloud();
+  if (preferCloud && canUseCloud()) {
+    try {
+      return await loadTurnosFromCloud();
+    } catch {
+      return loadTurnosFromIDB();
+    }
+  }
   return loadTurnosFromIDB();
 };
 

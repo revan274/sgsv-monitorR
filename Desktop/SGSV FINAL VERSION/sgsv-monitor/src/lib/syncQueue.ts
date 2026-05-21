@@ -66,6 +66,9 @@ const removeOp = async (id: string): Promise<void> => {
 
 // ─── Mapeo JS model → DB row (camelCase → snake_case) ────────────────────────
 
+const toUrl = (v: unknown): string | null =>
+  typeof v === 'string' && v.startsWith('https://') ? v : null;
+
 const incidenteToRow = (p: Record<string, unknown>): Record<string, unknown> => ({
   id: p.id,
   fecha: p.fecha,
@@ -77,9 +80,9 @@ const incidenteToRow = (p: Record<string, unknown>): Record<string, unknown> => 
   ubicacion: p.ubicacion,
   status: p.status,
   responsable: p.responsable,
-  imagen_evidencia: p.imagenEvidencia ?? null,
-  imagen_persona: p.imagenPersona ?? null,
-  video_evidencia: p.videoEvidencia ?? null,
+  imagen_evidencia: toUrl(p.imagenEvidencia),
+  imagen_persona: toUrl(p.imagenPersona),
+  video_evidencia: toUrl(p.videoEvidencia),
   closed_at: p.closedAt ?? null,
   notas: p.notas ?? [],
   turno_id: p.turnoId ?? null,

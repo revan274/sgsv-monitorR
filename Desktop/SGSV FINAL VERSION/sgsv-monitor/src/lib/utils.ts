@@ -179,8 +179,17 @@ export const normalizePersona = (persona: unknown): PersonaInteres => {
   };
 };
 
-export const stripPreviewForStorage = (incidente: unknown): Incidente =>
-  normalizeIncident(incidente);
+export const stripPreviewForStorage = (incidente: unknown): Incidente => {
+  const normalized = normalizeIncident(incidente);
+  const onlyUrl = (v: string | null): string | null =>
+    typeof v === 'string' && v.startsWith('https://') ? v : null;
+  return {
+    ...normalized,
+    imagenEvidencia: onlyUrl(normalized.imagenEvidencia),
+    imagenPersona: onlyUrl(normalized.imagenPersona),
+    videoEvidencia: onlyUrl(normalized.videoEvidencia),
+  };
+};
 
 // ─── Compresion de imagen ─────────────────────────────────────────────────────
 
