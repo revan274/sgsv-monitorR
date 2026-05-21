@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import {
   loadData,
-  loadDataFromIDB,
   saveIncidentesToIDB,
   savePcpToIDB,
   saveTurnosToIDB,
@@ -18,7 +17,7 @@ import {
 } from '../lib/storage';
 import { processPendingMediaUploads } from '../lib/mediaStorage';
 import { enqueueOp, getQueueCount, processQueue, clearQueue } from '../lib/syncQueue';
-import { getSupabaseConfigError, hasSupabaseEnv, isSupabaseConfigured } from '../lib/supabaseClient';
+import { isApiConfigured } from '../lib/apiClient';
 import {
   LOCAL_ADMIN_PROFILE,
   PERMISSIONS,
@@ -72,6 +71,7 @@ export interface AppState {
   profile: UserProfile | null;
   session: ApiSession | null;
   cloudEnabled: boolean;
+  realAuthEnabled: boolean;
 
   authReady: boolean;
   dataLoaded: boolean;
@@ -127,7 +127,8 @@ export const useAppStore = create<AppStore>()(
     role: ROLES.ADMIN,
     profile: LOCAL_ADMIN_PROFILE,
     session: null,
-    cloudEnabled: isSupabaseConfigured() || hasSupabaseEnv(),
+    cloudEnabled: isApiConfigured(),
+    realAuthEnabled: false,
 
     authReady: false,
     dataLoaded: false,
@@ -139,55 +140,41 @@ export const useAppStore = create<AppStore>()(
 
     initializeApp: async () => {
       if (get().booting || get().authReady) return;
-
-      const supabaseConfigError = getSupabaseConfigError();
-      const cloudEnabled = isSupabaseConfigured();
-      const shouldUseCloudAuth = cloudEnabled || Boolean(supabaseConfigError);
-      set({ booting: true, cloudEnabled: shouldUseCloudAuth, syncError: null, authError: null });
+      set({ booting: true, syncError: null, authError: null });
 
       try {
-        if (supabaseConfigError) {
-          set({
-            session: null,
-            profile: null,
-            role: ROLES.OPERATOR,
-            view: getDefaultViewForRole(ROLES.OPERATOR),
-            authError: supabaseConfigError,
-            authReady: true,
-            dataLoaded: true,
-          });
-          return;
-        }
+        if (isApiConfigured()) {
+          // API mode: auto-login with admin pseudo-session, no login screen
+          const session = await getCurrentSession();
+          const profile = session?.user ?? LOCAL_ADMIN_PROFILE;
+          const role = profile.role;
 
-        if (!cloudEnabled) {
+          set({
+            session,
+            profile,
+            role,
+            cloudEnabled: true,
+            realAuthEnabled: false,
+            view: getDefaultViewForRole(role),
+            authReady: true,
+            pendingOpsCount: await getQueueCount(),
+          });
+
+          await get().syncPendingOps();
+          await get().syncPendingMedia();
+          await get().hydrateData();
+        } else {
+          // Local mode: no backend, work entirely from IDB
           set({
             session: null,
             profile: LOCAL_ADMIN_PROFILE,
             role: ROLES.ADMIN,
+            cloudEnabled: false,
+            realAuthEnabled: false,
             view: getDefaultViewForRole(ROLES.ADMIN),
             authReady: true,
           });
           await get().hydrateData();
-          return;
-        }
-
-        const session = await getCurrentSession();
-        const profile = session?.user ?? null;
-        const role = profile?.role || ROLES.OPERATOR;
-
-        set({
-          session, profile, role,
-          view: getDefaultViewForRole(role),
-          authReady: true,
-          pendingOpsCount: await getQueueCount(),
-        });
-
-        if (session) {
-          await get().syncPendingOps();
-          await get().syncPendingMedia();
-          if (!get().dataLoaded) await get().hydrateData();
-        } else {
-          set({ dataLoaded: true, incidentes: [], personasInteres: [] });
         }
       } catch (error) {
         set({
@@ -201,20 +188,8 @@ export const useAppStore = create<AppStore>()(
     },
 
     hydrateData: async () => {
-      const { cloudEnabled, role, session } = get();
+      const { cloudEnabled, session } = get();
       set({ dataLoaded: false, syncError: null });
-
-      if (cloudEnabled && !session) {
-        set({ incidentes: [], personasInteres: [], dataLoaded: true });
-        return;
-      }
-
-      if (cloudEnabled && role === ROLES.OPERATOR) {
-        const { incidentes } = await loadDataFromIDB();
-        const config = await loadConfig({ preferCloud: Boolean(session) });
-        set({ incidentes, personasInteres: [], config, dataLoaded: true });
-        return;
-      }
 
       try {
         const { incidentes, pcp } = await loadData({ preferCloud: Boolean(cloudEnabled && session) });
@@ -250,12 +225,9 @@ export const useAppStore = create<AppStore>()(
       await authSignOut();
       set({
         session: null,
-        profile: null,
-        role: ROLES.OPERATOR,
-        view: 'nuevo',
-        incidentes: [],
-        personasInteres: [],
-        usuarios: [],
+        profile: LOCAL_ADMIN_PROFILE,
+        role: ROLES.ADMIN,
+        view: 'dashboard',
         usersLoaded: false,
         dataLoaded: true,
       });
@@ -287,7 +259,7 @@ export const useAppStore = create<AppStore>()(
         set({ turnoActivo: updatedTurno, turnos: nextTurnos });
       }
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       const offline = !navigator.onLine;
 
       if (cloud && offline) {
@@ -352,7 +324,7 @@ export const useAppStore = create<AppStore>()(
         syncError: null,
       });
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       if (cloud && !navigator.onLine) {
         await enqueueOp({ type: 'upsert', table: 'incidentes', entityId: updated.id, payload: updated as unknown as Record<string, unknown> });
         set({ pendingOpsCount: await getQueueCount() });
@@ -378,7 +350,7 @@ export const useAppStore = create<AppStore>()(
 
       set({ incidentes: incidentes.filter((inc) => inc.id !== id), syncError: null });
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       if (cloud && !navigator.onLine) {
         await enqueueOp({ type: 'delete', table: 'incidentes', entityId: id, payload: null });
         set({ pendingOpsCount: await getQueueCount() });
@@ -407,7 +379,7 @@ export const useAppStore = create<AppStore>()(
       const normalized = normalizePersona(persona);
       set({ personasInteres: [normalized, ...personasInteres], syncError: null });
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       if (cloud && !navigator.onLine) {
         await enqueueOp({ type: 'upsert', table: 'personas_interes', entityId: normalized.id, payload: normalized as unknown as Record<string, unknown> });
         set({ pendingOpsCount: await getQueueCount() });
@@ -436,7 +408,7 @@ export const useAppStore = create<AppStore>()(
       const prev = personasInteres;
       set({ personasInteres: personasInteres.map((p) => p.id === updated.id ? { ...p, ...updated } : p) });
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       if (cloud && !navigator.onLine) {
         await enqueueOp({ type: 'upsert', table: 'personas_interes', entityId: updated.id, payload: updated as unknown as Record<string, unknown> });
         set({ pendingOpsCount: await getQueueCount() });
@@ -462,7 +434,7 @@ export const useAppStore = create<AppStore>()(
 
       set({ personasInteres: personasInteres.filter((p) => p.id !== id) });
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       if (cloud && !navigator.onLine) {
         await enqueueOp({ type: 'delete', table: 'personas_interes', entityId: id, payload: null });
         set({ pendingOpsCount: await getQueueCount() });
@@ -524,7 +496,7 @@ export const useAppStore = create<AppStore>()(
       const nextTurnos = [nuevoTurno, ...turnos];
       set({ turnos: nextTurnos, turnoActivo: nuevoTurno });
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       if (cloud && !navigator.onLine) {
         await saveTurnosToIDB(nextTurnos);
         await enqueueOp({ type: 'upsert', table: 'turnos', entityId: nuevoTurno.id, payload: nuevoTurno as unknown as Record<string, unknown> });
@@ -559,7 +531,7 @@ export const useAppStore = create<AppStore>()(
 
       set({ turnos: nextTurnos, turnoActivo: null });
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       if (cloud && !navigator.onLine) {
         await saveTurnosToIDB(nextTurnos);
         await enqueueOp({ type: 'upsert', table: 'turnos', entityId: cerrado.id, payload: cerrado as unknown as Record<string, unknown> });
@@ -602,7 +574,7 @@ export const useAppStore = create<AppStore>()(
       set({ turnos: nextTurnos, turnoActivo: nextActivo });
       const turnoActualizado = nextTurnos.find((t) => t.id === turnoId);
 
-      const cloud = isSupabaseConfigured();
+      const cloud = isApiConfigured();
       if (cloud && !navigator.onLine) {
         await saveTurnosToIDB(nextTurnos);
         if (turnoActualizado) await enqueueOp({ type: 'upsert', table: 'turnos', entityId: turnoActualizado.id, payload: turnoActualizado as unknown as Record<string, unknown> });
@@ -632,40 +604,19 @@ export const useAppStore = create<AppStore>()(
       const nextConfig: AppConfig = { ...get().config, ...patch };
       set({ config: nextConfig });
       try {
-        await saveConfig(nextConfig, { preferCloud: Boolean(get().cloudEnabled && get().session) });
+        await saveConfig(nextConfig);
       } catch (error) {
         set({
           config: prevConfig,
           syncError: (error as Error).message || 'Error guardando configuracion.',
         });
-        await saveConfig(prevConfig, { preferCloud: false });
+        await saveConfig(prevConfig);
         throw error;
       }
     },
 
     syncPendingMedia: async () => {
-      const { succeeded } = await processPendingMediaUploads(async ({ entityType, entityId, field, imagenesIndex, url }) => {
-        if (entityType === 'incidente') {
-          const inc = get().incidentes.find((i) => i.id === entityId);
-          if (!inc) return;
-          const updated = { ...inc, [field]: url };
-          set({ incidentes: get().incidentes.map((i) => i.id === entityId ? updated : i) });
-          await upsertIncidente(updated);
-        } else if (entityType === 'pcp') {
-          const persona = get().personasInteres.find((p) => p.id === entityId);
-          if (!persona) return;
-          if (imagenesIndex !== undefined) {
-            const newImagenes = [...persona.imagenes];
-            newImagenes[imagenesIndex] = url;
-            const updated = { ...persona, imagenes: newImagenes };
-            set({ personasInteres: get().personasInteres.map((p) => p.id === entityId ? updated : p) });
-            await upsertPersonaInteres(updated);
-          }
-        }
-      });
-      if (succeeded > 0) {
-        await get().hydrateData();
-      }
+      await processPendingMediaUploads();
     },
 
     syncPendingOps: async () => {
@@ -712,8 +663,8 @@ const bindMediaSync = () => {
   if (mediaSyncBound) return;
   mediaSyncBound = true;
   window.addEventListener('online', () => {
-    const { cloudEnabled, session } = useAppStore.getState();
-    if (!cloudEnabled || !session) return;
+    const { cloudEnabled } = useAppStore.getState();
+    if (!cloudEnabled) return;
     void (async () => {
       await useAppStore.getState().syncPendingOps();
       await useAppStore.getState().syncPendingMedia();

@@ -59,7 +59,7 @@ export default function LocationPieChart({ incidentes }: LocationPieChartProps) 
                 boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)',
               }}
               itemStyle={{ color: '#fff', fontWeight: 600 }}
-              formatter={(value: number) => [`${value} siniestros`, 'Total']}
+              formatter={(value) => [`${value as number} siniestros`, 'Total']}
             />
             <Legend
               layout="vertical"

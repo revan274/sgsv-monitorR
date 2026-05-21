@@ -1,5 +1,5 @@
 import { get, set } from 'idb-keyval';
-import { isSupabaseConfigured, requireSupabase } from './supabaseClient';
+import { isApiConfigured, apiUpsert, apiDelete } from './apiClient';
 
 const QUEUE_KEY = 'sgsv_sync_queue';
 
@@ -35,7 +35,7 @@ export const getQueueCount = async (): Promise<number> =>
 export const clearQueue = async (): Promise<void> => writeQueue([]);
 
 /**
- * Encola una operación CRUD para sincronizar con Supabase cuando haya conexión.
+ * Encola una operación CRUD para sincronizar con la API cuando haya conexión.
  * Aplica merging inteligente:
  *   - upsert → reemplaza cualquier upsert previo del mismo entityId+table
  *   - delete → elimina cualquier upsert previo y añade delete (toma precedencia)
@@ -67,6 +67,14 @@ export const enqueueOp = async (
 const removeOp = async (id: string): Promise<void> => {
   const q = await readQueue();
   await writeQueue(q.filter((o) => o.id !== id));
+};
+
+// ─── Mapeo tabla → endpoint de la API ────────────────────────────────────────
+
+const TABLE_ENDPOINTS: Record<SyncTable, string> = {
+  incidentes: '/api/incidentes',
+  personas_interes: '/api/personas',
+  turnos: '/api/turnos',
 };
 
 // ─── Mapeo JS model → DB row (camelCase → snake_case) ────────────────────────
@@ -114,40 +122,33 @@ const turnoToRow = (p: Record<string, unknown>): Record<string, unknown> => ({
 
 const toDbRow = (table: SyncTable, payload: Record<string, unknown>): Record<string, unknown> => {
   switch (table) {
-    case 'incidentes':      return incidenteToRow(payload);
+    case 'incidentes':       return incidenteToRow(payload);
     case 'personas_interes': return personaToRow(payload);
-    case 'turnos':          return turnoToRow(payload);
+    case 'turnos':           return turnoToRow(payload);
   }
 };
 
 // ─── Procesador de cola ───────────────────────────────────────────────────────
 
-/**
- * Procesa todas las operaciones encoladas en orden cronológico.
- * Cada operación exitosa se elimina de la cola.
- * Las fallidas se mantienen para reintento en la próxima reconexión.
- */
 export const processQueue = async (): Promise<{ succeeded: number; failed: number; firstError: string | null }> => {
-  if (!isSupabaseConfigured() || !navigator.onLine) return { succeeded: 0, failed: 0, firstError: null };
+  if (!isApiConfigured() || !navigator.onLine) return { succeeded: 0, failed: 0, firstError: null };
 
   const queue = await readQueue();
   if (!queue.length) return { succeeded: 0, failed: 0, firstError: null };
 
   const sorted = [...queue].sort((a, b) => a.createdAt - b.createdAt);
-  const supabase = requireSupabase();
   let succeeded = 0;
   let failed = 0;
   let firstError: string | null = null;
 
   for (const op of sorted) {
+    const endpoint = TABLE_ENDPOINTS[op.table];
     try {
       if (op.type === 'delete') {
-        const { error } = await supabase.from(op.table).delete().eq('id', op.entityId);
-        if (error) throw new Error(error.message);
+        await apiDelete(`${endpoint}/${op.entityId}`);
       } else {
         const row = toDbRow(op.table, op.payload as Record<string, unknown>);
-        const { error } = await supabase.from(op.table).upsert(row);
-        if (error) throw new Error(error.message);
+        await apiUpsert(endpoint, op.entityId, row);
       }
       await removeOp(op.id);
       succeeded++;

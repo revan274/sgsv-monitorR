@@ -47,6 +47,7 @@ export default function App() {
   const role = useAppStore((s) => s.role);
   const syncError = useAppStore((s) => s.syncError);
   const signOut = useAppStore((s) => s.signOut);
+  const realAuthEnabled = useAppStore((s) => s.realAuthEnabled);
   const turnoActivo = useAppStore((s) => s.turnoActivo);
   const pendingOpsCount = useAppStore((s) => s.pendingOpsCount);
 
@@ -85,14 +86,6 @@ export default function App() {
     [],
   );
 
-  useEffect(() => {
-    const handleAuthError = () => {
-      notify('Sesión expirada o permisos insuficientes. Inicia sesión nuevamente.', 'error');
-      void signOut();
-    };
-    window.addEventListener('supabase-auth-error', handleAuthError);
-    return () => window.removeEventListener('supabase-auth-error', handleAuthError);
-  }, [notify, signOut]);
 
   const openModal = useCallback(
     (title: string, content: string, onConfirm: () => void, confirmColor = 'bg-red-600') => {
@@ -336,7 +329,7 @@ export default function App() {
               <span>{cloudEnabled ? 'Cloud' : 'Local'} / {roleLabel}</span>
             </div>
 
-            {cloudEnabled && (
+            {realAuthEnabled && (
               <button
                 onClick={handleSignOut}
                 className="w-full text-left px-3 py-3 rounded-xl transition flex gap-3 items-center text-slate-400 hover:bg-white/5"

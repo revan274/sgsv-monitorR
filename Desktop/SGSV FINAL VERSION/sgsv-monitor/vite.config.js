@@ -51,10 +51,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webp,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            urlPattern: /^https:\/\/sgsv-monitor-api\.jramospalomares274\.workers\.dev\/.*/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'sgsv-supabase-api',
+              cacheName: 'sgsv-worker-api',
               expiration: {
                 maxEntries: 60,
                 maxAgeSeconds: 60 * 60,

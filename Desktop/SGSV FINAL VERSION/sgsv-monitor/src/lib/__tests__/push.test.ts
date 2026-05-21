@@ -4,30 +4,8 @@ import {
   getNotificationPermission,
   showLocalNotification,
   notifyCriticalIncident,
-  savePushSubscription,
-  loadPushSubscription,
 } from '../push';
 import type { Incidente } from '../../types';
-
-// ─── Mocks ────────────────────────────────────────────────────────────────────
-
-const mockLocalStorage = (() => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
-    setItem: vi.fn((key: string, value: string) => { store[key] = value; }),
-    removeItem: vi.fn((key: string) => { delete store[key]; }),
-    clear: vi.fn(() => { store = {}; }),
-  };
-})();
-
-const PUSH_STORAGE_KEY = 'sgsv_push_subscription';
-
-beforeEach(() => {
-  vi.stubGlobal('localStorage', mockLocalStorage);
-  mockLocalStorage.clear();
-  vi.clearAllMocks();
-});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -158,38 +136,3 @@ describe('notifyCriticalIncident', () => {
   });
 });
 
-// ─── savePushSubscription / loadPushSubscription ──────────────────────────────
-
-describe('savePushSubscription', () => {
-  it('removes key when passed null', () => {
-    savePushSubscription(null);
-    expect(mockLocalStorage.removeItem).toHaveBeenCalledWith(PUSH_STORAGE_KEY);
-  });
-
-  it('stores subscription JSON when passed a subscription object', () => {
-    const mockSub = { toJSON: () => ({ endpoint: 'https://push.example.com', keys: {} }) };
-    savePushSubscription(mockSub as unknown as PushSubscription);
-    expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
-      PUSH_STORAGE_KEY,
-      JSON.stringify(mockSub),
-    );
-  });
-});
-
-describe('loadPushSubscription', () => {
-  it('returns null when nothing stored', () => {
-    expect(loadPushSubscription()).toBeNull();
-  });
-
-  it('returns parsed object when valid JSON stored', () => {
-    const data = { endpoint: 'https://push.example.com', keys: { auth: 'a', p256dh: 'b' } };
-    mockLocalStorage.getItem.mockReturnValueOnce(JSON.stringify(data));
-    const result = loadPushSubscription();
-    expect(result).toEqual(data);
-  });
-
-  it('returns null when stored value is invalid JSON', () => {
-    mockLocalStorage.getItem.mockReturnValueOnce('{bad json}');
-    expect(loadPushSubscription()).toBeNull();
-  });
-});

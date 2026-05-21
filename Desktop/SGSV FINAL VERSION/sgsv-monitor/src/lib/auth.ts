@@ -1,4 +1,4 @@
-import { requireSupabase, isSupabaseConfigured } from './supabaseClient';
+import { isApiConfigured, apiGet, apiPatch } from './apiClient';
 import type { Role, Permission, UserProfile, ApiSession } from '../types';
 
 export const ROLES = Object.freeze({
@@ -34,7 +34,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = Object.freeze({
 
 export const LOCAL_ADMIN_PROFILE: UserProfile = Object.freeze({
   id: 'local-admin',
-  email: 'modo.local@sgsv',
+  email: 'admin@sgsv',
   role: ROLES.ADMIN,
 });
 
@@ -52,106 +52,34 @@ export const canAccessView = (role: Role | undefined, view: string): boolean => 
 export const getDefaultViewForRole = (role: Role | undefined): string =>
   normalizeRole(role) === ROLES.ADMIN ? 'dashboard' : 'nuevo';
 
-// ─── Auth con Supabase ────────────────────────────────────────────────────────
+// ─── Auth (API mode — no real login, pseudo-session) ─────────────────────────
 
 export const getCurrentSession = async (): Promise<ApiSession | null> => {
-  if (!isSupabaseConfigured()) return null;
-  const supabase = requireSupabase();
-  
-  const { data: { session }, error } = await supabase.auth.getSession();
-  if (error || !session) return null;
-
-  try {
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .maybeSingle();
-
-    if (profileError) {
-      throw new Error(`Error al cargar perfil: ${profileError.message}`);
-    }
-
-    const userProfile: UserProfile = profile
-      ? { id: profile.id, email: profile.email, role: normalizeRole(profile.role) }
-      : {
-          id: session.user.id,
-          email: session.user.email || '',
-          role: normalizeRole(
-            (session.user.app_metadata?.role as string | undefined) ||
-            (session.user.user_metadata?.role as string | undefined),
-          ),
-        };
-
-    return { token: session.access_token, user: userProfile };
-  } catch {
-    return null;
-  }
+  if (!isApiConfigured()) return null;
+  return { token: 'api', user: LOCAL_ADMIN_PROFILE };
 };
 
-export const signInWithEmail = async ({
-  email,
-  password,
-}: {
+export const signInWithEmail = async (_credentials: {
   email: string;
   password: string;
 }): Promise<ApiSession> => {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  
-  if (error || !data.session) {
-    throw new Error(error?.message || 'Error al iniciar sesion');
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', data.session.user.id)
-    .maybeSingle();
-
-  if (profileError) {
-    throw new Error(`Error al cargar perfil: ${profileError.message}`);
-  }
-
-  const userProfile: UserProfile = profile
-    ? { id: profile.id, email: profile.email, role: normalizeRole(profile.role) }
-    : {
-        id: data.session.user.id,
-        email: data.session.user.email || email,
-        role: normalizeRole(
-          (data.session.user.app_metadata?.role as string | undefined) ||
-          (data.session.user.user_metadata?.role as string | undefined),
-        ),
-      };
-
-  return { token: data.session.access_token, user: userProfile };
+  throw new Error('Autenticación por contraseña no habilitada en este modo.');
 };
 
 export const signOut = async (): Promise<void> => {
-  if (!isSupabaseConfigured()) return;
-  const supabase = requireSupabase();
-  await supabase.auth.signOut();
+  // No-op: no real session to invalidate
 };
 
 export const fetchProfiles = async (): Promise<UserProfile[]> => {
-  if (!isSupabaseConfigured()) return [];
-  const supabase = requireSupabase();
-  
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .order('email');
-    
-  if (error) {
-    throw new Error(`Error al cargar usuarios: ${error.message}`);
-  }
+  if (!isApiConfigured()) return [LOCAL_ADMIN_PROFILE];
 
-  if (!data) return [];
-  
-  return data.map((u) => ({ 
-    id: u.id,
-    email: u.email,
-    role: normalizeRole(u.role) 
+  const raw = (await apiGet('/api/profiles')) as Record<string, unknown>[];
+  return (raw || []).map((u) => ({
+    id: String(u.id || ''),
+    email: String(u.email || ''),
+    role: normalizeRole(u.role),
+    created_at: u.created_at as string | undefined,
+    updated_at: u.updated_at as string | undefined,
   }));
 };
 
@@ -162,22 +90,10 @@ export const updateProfileRole = async ({
   id: string;
   role: Role;
 }): Promise<UserProfile> => {
-  const supabase = requireSupabase();
-  
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({ role })
-    .eq('id', id)
-    .select()
-    .single();
-    
-  if (error || !data) {
-    throw new Error('Error al actualizar el rol');
-  }
-  
-  return { 
-    id: data.id,
-    email: data.email,
-    role: normalizeRole(data.role) 
+  const updated = (await apiPatch(`/api/profiles/${id}`, { role })) as Record<string, unknown>;
+  return {
+    id: String(updated.id || id),
+    email: String(updated.email || ''),
+    role: normalizeRole(updated.role),
   };
 };
