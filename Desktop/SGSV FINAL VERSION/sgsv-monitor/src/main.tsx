@@ -6,6 +6,7 @@ import App from './App.tsx';
 import { useAppStore } from './store/useAppStore';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import { notifyCriticalIncident, requestNotificationPermission } from './lib/push';
+import { captureError } from './lib/monitoring';
 import type { Incidente } from './types';
 
 const updateSW = registerSW({
@@ -113,6 +114,13 @@ useAppStore.subscribe(
     showCriticalToast(criticalIncident);
   },
 );
+
+window.addEventListener('unhandledrejection', (e) => {
+  captureError(e.reason, { component: 'unhandledrejection' });
+});
+window.addEventListener('error', (e) => {
+  captureError(e.error ?? new Error(e.message), { component: 'global', source: e.filename });
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

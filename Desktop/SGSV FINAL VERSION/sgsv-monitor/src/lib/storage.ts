@@ -1,5 +1,6 @@
 import { get, set } from 'idb-keyval';
 import { isApiConfigured, apiGet, apiUpsert, apiDelete } from './apiClient';
+import { captureError } from './monitoring';
 import {
   STORAGE_KEYS,
   normalizeIncident,
@@ -107,7 +108,7 @@ export const loadDataFromIDB = async (): Promise<{ incidentes: Incidente[]; pcp:
       pcp: savedPCP || [],
     };
   } catch (error) {
-    console.error('Error al cargar datos desde IndexedDB:', error);
+    captureError(error, { component: 'storage', action: 'loadDataFromIDB' });
     throw error;
   }
 };

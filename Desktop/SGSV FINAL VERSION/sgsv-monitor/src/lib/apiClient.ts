@@ -6,15 +6,24 @@ interface ApiError extends Error {
   status: number;
 }
 
+let _authToken: string | null = null;
+
+export const setAuthToken = (token: string | null): void => {
+  _authToken = token;
+};
+
 const base = (): string => {
   if (!API_URL) throw new Error('VITE_API_URL no configurado');
   return API_URL;
 };
 
 const fetchJson = async (url: string, init?: RequestInit): Promise<unknown> => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (_authToken) headers['Authorization'] = `Bearer ${_authToken}`;
+
   const res = await fetch(url, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: { ...headers, ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);

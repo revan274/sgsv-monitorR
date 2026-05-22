@@ -1,5 +1,6 @@
 import { get, set } from 'idb-keyval';
 import { isApiConfigured, apiUpsert, apiDelete } from './apiClient';
+import { captureWarning } from './monitoring';
 
 const QUEUE_KEY = 'sgsv_sync_queue';
 
@@ -158,7 +159,7 @@ export const processQueue = async (): Promise<{ succeeded: number; failed: numbe
       const retries = (op.retries ?? 0) + 1;
       if (retries >= MAX_RETRIES) {
         await removeOp(op.id);
-        console.warn(`[SyncQueue] Op descartada tras ${MAX_RETRIES} intentos (${op.table}/${op.entityId}):`, msg);
+        captureWarning(`Op descartada tras ${MAX_RETRIES} intentos: ${msg}`, { component: 'syncQueue', action: 'processQueue', entityId: `${op.table}/${op.entityId}` });
       } else {
         const q = await readQueue();
         await writeQueue(q.map((o) => o.id === op.id ? { ...o, retries, lastError: msg } : o));

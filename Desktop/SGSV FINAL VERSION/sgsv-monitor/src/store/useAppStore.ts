@@ -17,7 +17,7 @@ import {
 } from '../lib/storage';
 import { processPendingMediaUploads } from '../lib/mediaStorage';
 import { enqueueOp, getQueueCount, processQueue, clearQueue } from '../lib/syncQueue';
-import { isApiConfigured } from '../lib/apiClient';
+import { isApiConfigured, setAuthToken } from '../lib/apiClient';
 import {
   LOCAL_ADMIN_PROFILE,
   PERMISSIONS,
@@ -37,6 +37,7 @@ import {
   sortByTimestampDesc,
   createId,
 } from '../lib/utils';
+import { validateIncidente, validatePersonaInteres } from '../lib/schemas';
 import type {
   Incidente,
   PersonaInteres,
@@ -146,6 +147,7 @@ export const useAppStore = create<AppStore>()(
         if (isApiConfigured()) {
           // API mode: auto-login with admin pseudo-session, no login screen
           const session = await getCurrentSession();
+          setAuthToken(session?.token ?? null);
           const profile = session?.user ?? LOCAL_ADMIN_PROFILE;
           const role = profile.role;
 
@@ -165,6 +167,7 @@ export const useAppStore = create<AppStore>()(
           await get().hydrateData();
         } else {
           // Local mode: no backend, work entirely from IDB
+          setAuthToken(null);
           set({
             session: null,
             profile: LOCAL_ADMIN_PROFILE,
@@ -210,6 +213,7 @@ export const useAppStore = create<AppStore>()(
       set({ authError: null, dataLoaded: false });
       try {
         const session = await signInWithEmail({ email, password });
+        setAuthToken(session.token);
         const profile = session.user;
         const role = profile.role || ROLES.OPERATOR;
 
@@ -223,6 +227,7 @@ export const useAppStore = create<AppStore>()(
 
     signOut: async () => {
       await authSignOut();
+      setAuthToken(null);
       set({
         session: null,
         profile: LOCAL_ADMIN_PROFILE,
@@ -245,6 +250,8 @@ export const useAppStore = create<AppStore>()(
       assertPermission(role, PERMISSIONS.CREATE_INCIDENTS);
 
       const normalized = normalizeIncident({ ...incidente, turnoId: turnoActivo?.id });
+      const v = validateIncidente(normalized);
+      if (!v.success) throw new Error(v.error.issues[0].message);
       const nextIncidentes = sortByTimestampDesc([normalized, ...incidentes]);
       set({ incidentes: nextIncidentes, syncError: null });
 
@@ -318,6 +325,9 @@ export const useAppStore = create<AppStore>()(
         }
       }
 
+      const vu = validateIncidente(updated);
+      if (!vu.success) throw new Error(vu.error.issues[0].message);
+
       const prevIncidentes = incidentes;
       set({
         incidentes: incidentes.map((inc) => inc.id === updated.id ? { ...inc, ...updated } : inc),
@@ -377,6 +387,8 @@ export const useAppStore = create<AppStore>()(
       assertPermission(role, PERMISSIONS.MANAGE_PCP);
 
       const normalized = normalizePersona(persona);
+      const vp = validatePersonaInteres(normalized);
+      if (!vp.success) throw new Error(vp.error.issues[0].message);
       set({ personasInteres: [normalized, ...personasInteres], syncError: null });
 
       const cloud = isApiConfigured();
@@ -404,6 +416,9 @@ export const useAppStore = create<AppStore>()(
     updatePersonaInteres: async (updated) => {
       const { role, personasInteres } = get();
       assertPermission(role, PERMISSIONS.MANAGE_PCP);
+
+      const vpu = validatePersonaInteres(updated);
+      if (!vpu.success) throw new Error(vpu.error.issues[0].message);
 
       const prev = personasInteres;
       set({ personasInteres: personasInteres.map((p) => p.id === updated.id ? { ...p, ...updated } : p) });
