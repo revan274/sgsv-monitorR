@@ -57,3 +57,17 @@ export const apiUpsert = async (path: string, id: string, body: unknown): Promis
     throw err;
   }
 };
+
+// Multipart upload — no pone Content-Type para que el browser añada el boundary
+export const apiUpload = async (path: string, formData: FormData): Promise<unknown> => {
+  const headers: Record<string, string> = {};
+  if (_authToken) headers['Authorization'] = `Bearer ${_authToken}`;
+  const res = await fetch(`${base()}${path}`, { method: 'POST', headers, body: formData });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    const err = new Error(`API ${res.status}: ${text}`) as ApiError;
+    err.status = res.status;
+    throw err;
+  }
+  return res.json() as Promise<unknown>;
+};
